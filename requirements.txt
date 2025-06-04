@@ -3,3 +3,7 @@ uvicorn
 sqlalchemy
 pydantic
 requests
+qrcode
+python-dotenv
+pillow 
+sendgrid
