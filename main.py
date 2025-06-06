@@ -1,11 +1,15 @@
+import os
 import random
 import string
-import PIL.ImageFile
 import qrcode
+import dotenv
+import smtplib
 import PIL
 import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
+import PIL.ImageFile
+from email.message import EmailMessage
 from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -19,6 +23,9 @@ from pathlib import Path
 #===========================================================
 
 """ START THE APPLICATION """
+
+# Load environment variables
+dotenv.load_dotenv()
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -179,6 +186,46 @@ def generate_qr_code(code: str, name: str, surname: str) -> Path:
 
 def generate_qr_code_from_member(member: Member) -> Path:
     return generate_qr_code(member.card_id, member.name, member.surname)
+
+def send_welcome_email(email_to: str, qr_path: Path,
+                       name: str, surname: str,
+                       login: str, password: str) -> None:
+    
+    # Get needed data from environmental vars
+    email_from = os.getenv("EMAIL_USER_NAME")
+    email_pass = os.getenv("EMAIL_APP_PASS")
+
+    # Get email body from file
+    with open('welcome_email_template.txt', 'r', encoding='utf-8') as file:
+        # Read template
+        email_body = file.read()
+
+        # Replace key words
+        replacement = [
+            ("{name}", "asd"),
+            ("{surname}", "asd"),
+            ("{login}", "asd"),
+            ("{password}", "asd"),
+        ]
+        for key_word, value in replacement:
+            email_body = email_body.replace(key_word, value)
+
+    # Assemble message
+    msg = EmailMessage()
+    msg['Subject'] = "Welcome to Impakt"
+    msg['From'] = email_from
+    msg['To'] = email_to
+    msg.set_content(email_body)
+
+    # Add QR as an attachment
+    with open(qr_path, 'rb') as qr:
+        qr_image = qr.read()
+        msg.add_attachment(qr_image, maintype='image', subtype='png', filename=qr_path.name)
+
+    # Send email
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
+        smtp.login(email_from, email_pass)
+        smtp.send_message(msg)
 #===========================================================
 
 """ FastAPI related functiomality """

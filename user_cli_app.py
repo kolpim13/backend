@@ -132,19 +132,35 @@ def generate_qr_code(code: str, name: str, surname: str) -> Path:
     # Save QR code on the disc
     qr_name = "qr_{name}_{surname}_{code}.png".format(name=name, surname=surname, code=code)
     qr_path = Path(Path.resolve(Path.cwd()), "qr_codes", qr_name)
+    if qr_path.parent.exists() is False:
+        Path(qr_path.parent).mkdir(parents=True, exist_ok=False)
     new_img.save(qr_path)
 
     # Return path to the QR code
     return qr_path
 
-def send_email_with_info(path_to_qr: Path) -> None:
+def send_email_with_info(path_to_qr: Path, email_to_send: str) -> None:
     # Try this function at home!
     
     dotenv.load_dotenv()
     email_from = os.getenv("EMAIL_USER")
-    email_to = email_from
+    email_to = email_to_send
     email_pass = os.getenv("EMAIL_PASS")
-    email_body = """ Hello there\n\nWelcome to the impakt. We do love you, give us your money. Here is your QR Code, cheers! :) """
+    
+    # Get email body from file
+    with open('welcome_email_template.txt', 'r', encoding='utf-8') as file:
+        # Read template
+        email_body = file.read()
+
+        # Replace key words
+        replacement = [
+            ("{name}", "asd"),
+            ("{surname}", "asd"),
+            ("{login}", "asd"),
+            ("{password}", "asd"),
+        ]
+        for key_word, value in replacement:
+            email_body = email_body.replace(key_word, value)
     
     """ SMTP """
     msg = EmailMessage()
@@ -153,81 +169,20 @@ def send_email_with_info(path_to_qr: Path) -> None:
     msg['To'] = email_to
     msg.set_content(email_body)
 
+    # Read QR code from disc
     with open(path_to_qr, 'rb') as qr:
         qr_image = qr.read()
         msg.add_attachment(qr_image, maintype='image', subtype='png', filename=path_to_qr.name)
 
-    # smtpObj = smtplib.SMTP('live.smtp.mailtrap.io', 587)
-    # smtpObj.sendmail(email_from, email_to, msg)
-
-    # Tests
-    # context = ssl.create_default_context()
-    # with socket.create_connection(("smtp.gmail.com", 465)) as sock:
-    #     with context.wrap_socket(sock, server_hostname="smtp.gmail.com") as ssock:
-    #         print(ssock.version())
-
-    smtplib.SMTP.debuglevel = 1
-    context = ssl.create_default_context()
-    with socket.create_connection(("smtp.gmail.com", 465)) as sock:
-        with context.wrap_socket(sock, server_hostname="smtp.gmail.com") as ssock:
-            smtp = smtplib.SMTP_SSL()
-            smtp.sock = ssock  # Use the pre-wrapped socket
-            smtp.file = ssock.makefile("rb")
-
-            smtp.helo("localhost")
-            smtp.ehlo()
-            # smtp.connect("smtp.gmail.com", 465)
-
-            smtp.login(email_from, email_pass)
-            smtp.send_message(msg)
-            smtp.quit()
-
-    # Should work in home network (but does not).
-    # print("OpenSSL version:", ssl.OPENSSL_VERSION)
-    # smtplib.SMTP_SSL.debuglevel = 1
-    # context = ssl.create_default_context()
-    # with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=10) as smtp:
-    #     smtp.login(email_from, email_pass)
-    #     smtp.send_message(msg)
-
-    # with smtplib.SMTP("smtp.office365.com", 587, timeout=10) as smtp:
-    #     smtp.ehlo() 
-    #     smtp.starttls() 
-    #     smtp.ehlo() 
-    #     smtp.login(email_from, email_pass)
-    #     smtp.send_message(msg)
-
-    """ NATIVE """
-    # message = Mail(
-    #     from_email          = email_from,
-    #     to_emails           = email_to,
-    #     subject             = "Welcome to Impakt",
-    #     plain_text_content  = email_body
-    # )
-
-    # # Attach QR code image
-    # with open(path_to_qr, 'rb') as f:
-    #     data = f.read()
-    #     encoded = base64.b64encode(data).decode()
-
-    # attachment = Attachment(
-    #     FileContent(encoded),
-    #     FileName(path_to_qr.name),
-    #     FileType('image/png'),
-    #     Disposition('attachment')
-    # )
-    # message.attachment = attachment
-
-    # try:
-    #     sg = SendGridAPIClient(os.getenv("SENDGRID_API_KEY"))
-    #     response = sg.send(message)
-    #     print("✅ Email sent:", response.status_code)
-    # except Exception as e:
-    #     print("❌ Error sending email:", str(e))
+    # Send an email
+    smtplib.SMTP_SSL.debuglevel = 1
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
+        smtp.login(email_from, email_pass)
+        smtp.send_message(msg)
 
 if __name__ == "__main__":
-    # generate_qr_code(code="MazurAn123", name="Anastazja", surname="Mazur")
-    send_email_with_info(path_to_qr=Path(Path.cwd().resolve(), "qr_codes", "qr_Anastazja_Mazur_MazurAn123.png"))
+    qr = generate_qr_code(code="MazurAn123", name="Anastazja", surname="Mazur")
+    send_email_with_info(path_to_qr=qr, email_to_send="anastasiia.mazur@gmail.com")
     exit()
 
     while True:
