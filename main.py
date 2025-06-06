@@ -14,8 +14,7 @@ from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from datetime import date, datetime
-from dateutil.relativedelta import relativedelta
+from datetime import date, datetime, timedelta
 from database import SessionLocal, engine, SessionLocalEntrances, engine_entrances
 from models import Base, BaseEntrances, Member
 from enum import Enum
@@ -37,17 +36,6 @@ app = FastAPI(title="Dance School Backend")
 # Load Impakt logo once on the beginning
 # impakt_logo = PIL.Image.open("impakt_logo.jpg")
 # impakt_logo = impakt_logo.resize((75, 100))
-#===========================================================
-
-""" Database related """
-
-def get_member_by_qr_code(db: Session, qr_code: str) -> Member:
-    member: Member = db.query(Member).filter(Member.qr_code == qr_code).first()
-    return member
-
-def get_member_by_username(db: Session, username: str) -> Member:
-    member: Member = db.query(Member).filter(Member.username == username).first()
-    return member
 #===========================================================
 
 """ DATA TYPES """
@@ -77,18 +65,37 @@ class MemberIn(BaseModel):
         BaseModel (_type_): _description_
     """
 
-    qr_code: str
+    # CARD ID: Unique value for every account [bounded to a physical card].
+    card_id: str
 
+    # Main information about user/member
     name: str
     surname: str
+    email: str
+    phone_number: str
+    date_of_birth: date
+
+    # Preferences (To Be Added in the future)
+    # How did you know about Impakt
+    # Preferences: leader / follower / both
+    # ...
+
+    # Technical information
     pass_type: int
+    account_type: int
     entrances_left: int
     expiration_date: date
+    register_date: date
+
+    # Store last checkIn time separetly --> will be needed for some operations
     last_check_in: date
 
+    # Data to log in
     username: str
     password: str
-    account_type: int
+
+    # Is Card activated - probably will be needed in future.
+    activated: bool
 
 class LogIn(BaseModel):
     username: str
@@ -96,19 +103,23 @@ class LogIn(BaseModel):
 #===========================================================
 
 """ UTILS """
-        
-def get_db(type: Database = Database.MEMBERS):
-    if type is Database.MEMBERS:
-        db = SessionLocal()
-    elif type is Database.ENTRANCES:
-        db = SessionLocalEntrances
-    else:
-        raise ValueError("No such database exists")
 
+def get_db():
+    db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+def get_db_entrances():
+    db = SessionLocalEntrances()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_random_string(len: int) -> str:
+    return ''.join(random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits) for _ in range(len))
 
 def generate_qr_code(code: str, name: str, surname: str) -> Path:
     """ Generates QR Code and places it in folder qr_codes
@@ -184,7 +195,7 @@ def generate_qr_code(code: str, name: str, surname: str) -> Path:
     new_img.save(qr_path)
     return qr_path
 
-def generate_qr_code_from_member(member: Member) -> Path:
+def generate_qr_code_member(member: Member) -> Path:
     return generate_qr_code(member.card_id, member.name, member.surname)
 
 def send_welcome_email(email_to: str, qr_path: Path,
@@ -202,10 +213,10 @@ def send_welcome_email(email_to: str, qr_path: Path,
 
         # Replace key words
         replacement = [
-            ("{name}", "asd"),
-            ("{surname}", "asd"),
-            ("{login}", "asd"),
-            ("{password}", "asd"),
+            ("{name}", name),
+            ("{surname}", surname),
+            ("{login}", login),
+            ("{password}", password),
         ]
         for key_word, value in replacement:
             email_body = email_body.replace(key_word, value)
@@ -226,12 +237,68 @@ def send_welcome_email(email_to: str, qr_path: Path,
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
         smtp.login(email_from, email_pass)
         smtp.send_message(msg)
+
+def get_member_based_on_default_value(member: dict) -> dict:
+    # "date_of_birth": date.strftime(date(2050, 1, 1), "%Y-%m-%d"),
+    # "expiration_date": date.strftime(date.today(), "%Y-%m-%d"),
+    # "register_date": date.strftime(date.today(), "%Y-%m-%d"),
+    # "last_check_in": datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"),
+
+    member_default = {
+        "card_id": get_random_string(12),
+
+        "name": "Name",
+        "surname": "Surname",
+        "email": "mail@gmail.com",
+        "phone_number": "000 000 000",
+        
+        "date_of_birth": None, # date(2050, 1, 1),
+
+        "pass_type": PassType.PASS_NO,
+        "account_type": AccountType.MEMBER,
+        "entrances_left": 0,
+        "expiration_date": date.today() + timedelta(weeks=5),
+        "register_date": date.today(),
+
+        "last_check_in": None,
+
+        "username": get_random_string(12),
+        "password": get_random_string(12),
+       
+        "activated": False,
+    }
+    member = {**member_default, **member}
+
+    # Add some validation here (?)
+    # ...
+
+    return member
+
+def dict_to_Member(member_dict: dict) -> Member:
+    def safe_enum_value_convert(val):
+        return val.value if isinstance(val, Enum) else val
+    
+    # Probably will be needed in future
+    member = Member(
+        **{**member_dict,
+            "account_type": int(safe_enum_value_convert(member_dict["account_type"])),
+            "pass_type": int(safe_enum_value_convert(member_dict["pass_type"]))
+        }
+    )
+    return member
 #===========================================================
 
-""" FastAPI related functiomality """
+""" Database related """
 
-@app.post("/members/check_create_root")
-def check_create_root_user(db: Session = Depends(get_db)) -> None:
+def get_member_by_card_id(db: Session, card_id: str) -> Member:
+    member: Member = db.query(Member).filter(Member.card_id == card_id).first()
+    return member
+
+def get_member_by_username(db: Session, username: str) -> Member:
+    member: Member = db.query(Member).filter(Member.username == username).first()
+    return member
+
+def check_create_root(db: Session) -> bool:
     """ Function should be on the very beginning of the execution to check if there is a "root: user present
         If it does not --> create one with default username and password  
     """
@@ -243,39 +310,50 @@ def check_create_root_user(db: Session = Depends(get_db)) -> None:
     if root is None:
         print("No root user was found in the database --> start of creating a new one.")
 
+        root_values = {
+            "name": os.getenv("EMAIL_USER_NAME"),
+            "surname": os.getenv("EMAIL_USER_SURNAME"),
+            "email": os.getenv("EMAIL_USER_NAME"),
+            "username": "root",
+            "account_type": AccountType.ADMIN
+        }
+        root_values = get_member_based_on_default_value(root_values)
+
         # Create a root member and fill it with default values
-        root: Member = Member()
-        root.qr_code = "12345678"
-        root.name = "anonym"
-        root.surname = "----"
-        root.pass_type = PassType.PASS_UNLIMITED
-        root.entrances_left = 999
-        root.expiration_date = date(2050, 12, 31)
-        root.last_check_in = datetime.today()
-        root.register_date = date.today()
-        root.username = "root"
-        root.password = "pass"
-        root.account_type = AccountType.ADMIN
+        root: Member = dict_to_Member(root_values)
 
         # Add it to a database
         db.add(root)
         db.commit()
 
-        print("Root user was created with default values. Change it`s password and card ID as soon as possible!")
-        return JSONResponse(status_code=201, content={"message": "Default root user created"})
-    
-    # If exists -> return corresponding status!
-    content = {
-        "status": "success"
-    }
-    return JSONResponse(status_code=200, content=content)
+        # Create QR Code
+        qr_path = generate_qr_code_member(member=root)
 
-@app.post("/members/{qr_code}/add")
-def add_member(qr_code: str,
+        # Send QR via mail on self email address
+        send_welcome_email(os.getenv("EMAIL_USER_NAME"), qr_path,
+                           root.name, root.surname,
+                           root.username, root.password)
+
+        print("Root user was created with default values. Change it`s password and card ID as soon as possible!")
+        return True
+    
+    return False
+#===========================================================
+
+""" FastAPI Members """
+
+@app.post("/members/check_create_root")
+def api_check_create_root(db: Session = Depends(get_db)) -> JSONResponse:
+    if check_create_root(db) is True:
+        return JSONResponse(status_code=201, content={"status": "OK", "message": "Default root user created"})
+    return JSONResponse(status_code=200, content={"status": "OK", "message": "Root already exists"})
+
+@app.post("/members/{card_id}/add")
+def add_member(card_id: str,
                new_member: MemberIn, db: Session = Depends(get_db)):
     
     # Get data of the user is requesting for the operation
-    user: Member = get_member_by_qr_code(db, qr_code)
+    user: Member = get_member_by_card_id(db, card_id)
 
     # Check if such user exists
     if user is None:
@@ -290,7 +368,7 @@ def add_member(qr_code: str,
                             detail="The user has to possses admin role to add new members")
 
     # Will return None of no member with such id was found
-    is_exist = get_member_by_qr_code(db, new_member.qr_code)
+    is_exist = get_member_by_card_id(db, new_member.card_id)
 
     # Raise an error, so client`s app can handle it --> finish this function.
     if is_exist is not None:
@@ -303,45 +381,19 @@ def add_member(qr_code: str,
     # Think about scanning the id card as a method of log in to the app + password.
 
     # Override default values 
-    new_member_default = {
-        "name": "Name",
-        "surname": "SurName",
-        "email": "",
-
-        "pass_type": PassType.PASS_NO,
-        "account_type": AccountType.MEMBER,
-
-        "entrances_left": 0,
-        "expiration_date": str(date.strftime(date.today() + relativedelta(months=1, days=10), "%Y-%m-%d")),
-        "register_date": str(date.strftime(date.today(), "%Y-%m-%d")),
-
-        "last_check_in": str(datetime.strftime(datetime.today(), "%Y-%m-%d %H:%M:%S")),
-
-        "username": ''.join(random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits) for _ in range(8)),
-        "password": "12345678",
-
-        "activated": False,
-    }
-    new_member = {**new_member_default, **new_member.dict()}
+    new_member = get_member_based_on_default_value(new_member.dict())
 
     # Add new member to a database
     new_member = Member(**new_member)
     db.add(new_member)
-    print("member with card id {} added".format(new_member.qr_code))
+    print("member with card id {} added".format(new_member.card_id))
 
     # Update the database --> return from the function
     db.commit()
-    return {"status": "success", "id": new_member.qr_code}
+    return {"status": "success", "id": new_member.card_id}
+#===========================================================
 
-def get_member_info_by_qr_code(qr_code: str,
-                          db: Session = Depends(get_db)):
-    pass
-
-@app.post("/login/qr_code/{qr_code}/{password}")
-def login_by_qr_code(qr_code: str, password: str,
-                db: Session = Depends(get_db)):
-    
-    return {"status": "success"}
+""" FastAPI login """
 
 @app.post("/login/username")
 def login_by_username(login_data: LogIn,

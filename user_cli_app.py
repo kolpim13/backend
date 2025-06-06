@@ -181,9 +181,9 @@ def send_email_with_info(path_to_qr: Path, email_to_send: str) -> None:
         smtp.send_message(msg)
 
 if __name__ == "__main__":
-    qr = generate_qr_code(code="MazurAn123", name="Anastazja", surname="Mazur")
-    send_email_with_info(path_to_qr=qr, email_to_send="anastasiia.mazur@gmail.com")
-    exit()
+    # qr = generate_qr_code(code="MazurAn123", name="Anastazja", surname="Mazur")
+    # send_email_with_info(path_to_qr=qr, email_to_send="anastasiia.mazur@gmail.com")
+    # exit()
 
     while True:
         print("\n--- Dance School Terminal ---")

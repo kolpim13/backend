@@ -20,9 +20,9 @@ class Member(Base):
     # Main information about user/member
     name = Column(String)
     surname = Column(String)
-    email = Column(String)
+    email = Column(String, unique=True)
     phone_number = Column(String)
-    date_of_birth = Column(Date)
+    date_of_birth = Column(Date, nullable=True)
 
     # Preferences (To Be Added in the future)
     # How did you know about Impakt
@@ -37,7 +37,7 @@ class Member(Base):
     register_date = Column(Date)
 
     # Store last checkIn time separetly --> will be needed for some operations
-    last_check_in = Column(DateTime)
+    last_check_in = Column(DateTime, nullable=True)
 
     # Data to log in
     username = Column(String, unique=True)
@@ -57,6 +57,7 @@ class CheckInLog(BaseEntrances):
     control_card_id = Column(String)
     control_name = Column(String)
     control_surname = Column(String)
+    hall = Column(Integer)
 
     # Information about the member
     card_id = Column(String)

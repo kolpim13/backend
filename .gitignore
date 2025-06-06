@@ -1,4 +1,5 @@
 .venv
 *.pyc
 *.env
+*.db
 qr_codes/*.*
