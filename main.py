@@ -98,6 +98,8 @@ class MemberIn(BaseModel):
     activated: bool
 
 class LogIn(BaseModel):
+    """ Data needed to log into user account """
+
     username: str
     password: str
 #===========================================================
@@ -120,6 +122,15 @@ def get_db_entrances():
 
 def get_random_string(len: int) -> str:
     return ''.join(random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits) for _ in range(len))
+
+def generate_qr_code_value(db: Session = Depends(get_db)) -> str:
+    """ Generates unique QR code value """
+
+    while True:
+        code_value = get_random_string(int(os.getenv("QR_CODE_VALUE_LEN")))
+        exists = db.query(Member).filter(Member.card_id == code_value).first()
+        if not exists:
+            return code_value
 
 def generate_qr_code(code: str, name: str, surname: str) -> Path:
     """ Generates QR Code and places it in folder qr_codes
@@ -195,7 +206,7 @@ def generate_qr_code(code: str, name: str, surname: str) -> Path:
     new_img.save(qr_path)
     return qr_path
 
-def generate_qr_code_member(member: Member) -> Path:
+def generate_qr_code_member(member: Member | MemberIn) -> Path:
     return generate_qr_code(member.card_id, member.name, member.surname)
 
 def send_welcome_email(email_to: str, qr_path: Path,
@@ -238,6 +249,11 @@ def send_welcome_email(email_to: str, qr_path: Path,
         smtp.login(email_from, email_pass)
         smtp.send_message(msg)
 
+def send_welcome_email_member(email_to: str, qr_path: Path, member: Member | MemberIn) -> None:
+    send_welcome_email(email_to, qr_path,
+                       member.name, member.surname,
+                       member.username, member.password)
+
 def get_member_based_on_default_value(member: dict) -> dict:
     # "date_of_birth": date.strftime(date(2050, 1, 1), "%Y-%m-%d"),
     # "expiration_date": date.strftime(date.today(), "%Y-%m-%d"),
@@ -245,7 +261,7 @@ def get_member_based_on_default_value(member: dict) -> dict:
     # "last_check_in": datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"),
 
     member_default = {
-        "card_id": get_random_string(12),
+        "card_id": None,
 
         "name": "Name",
         "surname": "Surname",
@@ -311,8 +327,8 @@ def check_create_root(db: Session) -> bool:
         print("No root user was found in the database --> start of creating a new one.")
 
         root_values = {
-            "name": os.getenv("EMAIL_USER_NAME"),
-            "surname": os.getenv("EMAIL_USER_SURNAME"),
+            "name": os.getenv("ROOT_NAME"),
+            "surname": os.getenv("ROOT_SURNAME"),
             "email": os.getenv("EMAIL_USER_NAME"),
             "username": "root",
             "account_type": AccountType.ADMIN
@@ -327,12 +343,15 @@ def check_create_root(db: Session) -> bool:
         db.commit()
 
         # Create QR Code
-        qr_path = generate_qr_code_member(member=root)
+        qr_value: str = generate_qr_code_value(db)
+        qr_code: Path = generate_qr_code(qr_value, 
+                                         root.name, root.surname)
 
         # Send QR via mail on self email address
-        send_welcome_email(os.getenv("EMAIL_USER_NAME"), qr_path,
+        send_welcome_email(os.getenv("EMAIL_USER_NAME"), qr_code,
                            root.name, root.surname,
                            root.username, root.password)
+        print("4")
 
         print("Root user was created with default values. Change it`s password and card ID as soon as possible!")
         return True
@@ -350,7 +369,9 @@ def api_check_create_root(db: Session = Depends(get_db)) -> JSONResponse:
 
 @app.post("/members/{card_id}/add")
 def add_member(card_id: str,
-               new_member: MemberIn, db: Session = Depends(get_db)):
+               new_member: dict, db: Session = Depends(get_db)):
+    
+    """ Add a new member by administrator """
     
     # Get data of the user is requesting for the operation
     user: Member = get_member_by_card_id(db, card_id)
@@ -367,30 +388,44 @@ def add_member(card_id: str,
         raise HTTPException(status_code=401,
                             detail="The user has to possses admin role to add new members")
 
-    # Will return None of no member with such id was found
-    is_exist = get_member_by_card_id(db, new_member.card_id)
-
-    # Raise an error, so client`s app can handle it --> finish this function.
-    if is_exist is not None:
-        print("This card id already registered")
+    # SCheck if user with such email or username(login) already exists 
+    username_exists = db.query(Member).filter(Member.username == new_member.username).first()
+    if username_exists is not None:
         raise HTTPException(status_code=400,
-                            detail="Member with such ID already registered")
-        
+                            detail="User with such username already registered")
+    
+    email_exists = db.query(Member).filter(Member.email == new_member.email).first()
+    if email_exists is not None:
+        raise HTTPException(status_code=400,
+                            detail="User with such email already registered")
+
     # Validate correctness of the data being provided
     # Name, Surname should be present; Unique username; strong password
     # Think about scanning the id card as a method of log in to the app + password.
 
-    # Override default values 
-    new_member = get_member_based_on_default_value(new_member.dict())
+    # Generate new QR code
+    qr_value: str = generate_qr_code_value(db)
+    qr_code: Path = generate_qr_code(qr_value, 
+                                     new_member["name"], new_member["surname"])
 
-    # Add new member to a database
+    # Override default values
+    new_member["card_id"] = qr_value
+    new_member = get_member_based_on_default_value(new_member)
+
+    # Add new member to a database --> Update the database.
     new_member = Member(**new_member)
     db.add(new_member)
+    db.commit()
     print("member with card id {} added".format(new_member.card_id))
 
-    # Update the database --> return from the function
-    db.commit()
-    return {"status": "success", "id": new_member.card_id}
+    # Generate QR Code
+    qr_path = generate_qr_code_member(member=new_member)
+
+    # Send an email with the code
+    send_welcome_email_member(email_to=new_member.email, qr_path=qr_path, member=new_member)
+
+    # return from the function
+    return JSONResponse(status_code=201, content={"status": "OK", "message": "New member has been added"})
 #===========================================================
 
 """ FastAPI login """

@@ -33,38 +33,19 @@ def check_create_root() -> None:
 
 def add_member() -> None:
     # Provide all needed data
-    qr_code = input("NFC ID: ")
     name = input("Name: ")
     surname = input("Surname: ")
-    pass_type = int(input("Pass type: "))
-    entrances_left = int(input("Entrances left: "))
-    expiration_date = input("Expiration date (YYYY-MM-DD): ")
-    expiration_date = str(datetime.datetime.strptime(expiration_date, "%Y-%m-%d").date())
-    last_check_in = input("Last check in (YYYY-MM-DD HH:MM:SS): ")
-    last_check_in = str(datetime.datetime.strptime(last_check_in, "%Y-%m-%d %H:%M:%S"))
-    register_date = datetime.date.today()
-    register_date = str(datetime.datetime.strptime(register_date, "%Y-%m-%d").date())
-    username = "----"
-    password = "----"
-    account_type = int(input("Account type: "))
+    email = input("Email: ")
 
     # Put all data together
     data = {
-        "id": qr_code,
         "name": name,
         "surname": surname,
-        "pass_type": pass_type,
-        "entrances_left": entrances_left,
-        "expiration_date": expiration_date,
-        "last_check_in": last_check_in,
-        "register_date": register_date,
-        "username": username,
-        "password": password,
-        "account_type": account_type,
+        "email": email
     }
 
     # Try to send data to the database
-    response = requests.post("{api_url}/members/{user_id}/add".format(api_url=API_URL, user_id="12345678"), json=data)
+    response = requests.post("{api_url}/members/{user_id}/add".format(api_url=API_URL, user_id="i3Te8Gdmoo2r"), json=data)
     if response.status_code == 200:
         print("✅ Member added successfully.")
     else:
