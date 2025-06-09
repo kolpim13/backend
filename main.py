@@ -351,7 +351,7 @@ def check_create_root(db: Session) -> bool:
                                          root.name, root.surname)
 
         # Send QR via mail on self email address
-        send_welcome_email(os.getenv("EMAIL_USER_NAME"), qr_code,
+        send_welcome_email(os.getenv("ROOT_EMAIL"), qr_code,
                            root.name, root.surname,
                            root.username, root.password)
         print("4")
