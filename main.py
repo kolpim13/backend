@@ -331,7 +331,7 @@ def check_create_root(db: Session) -> bool:
         root_values = {
             "name": os.getenv("ROOT_NAME"),
             "surname": os.getenv("ROOT_SURNAME"),
-            "email": os.getenv("EMAIL_USER"),
+            "email": os.getenv("ROOT_EMAIL"),
             "username": os.getenv("ROOT_DEFAULT_LOGIN"),
             "password": os.getenv("ROOT_DEFAULT_PASS"),
             "account_type": AccountType.ADMIN
