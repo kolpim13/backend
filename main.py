@@ -1,6 +1,7 @@
 import os
 import random
 import string
+from typing import Optional
 import qrcode
 import dotenv
 import smtplib
@@ -16,9 +17,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from database import SessionLocal, engine, SessionLocalEntrances, engine_entrances
-from models import Base, BaseEntrances, Member
+from models import Base, BaseEntrances, Member, CheckInEntry
 from enum import Enum
 from pathlib import Path
+
+from schemas import CheckInLogResponse, CheckInLogFilters, CheckInRequest, LogInResponse, MemberAddRequest, MemberUpdateRequest
 #===========================================================
 
 """ START THE APPLICATION """
@@ -40,18 +43,13 @@ app = FastAPI(title="Dance School Backend")
 
 """ DATA TYPES """
 
-class Database(Enum):
-    MEMBERS     = 0
-    ENTRANCES   = 1
-
 class PassType(Enum):
-    " Define how many entrances can one do"
-    PASS_1          = 0
-    PASS_4          = 1
-    PASS_8          = 2
-    PASS_12         = 3
-    PASS_UNLIMITED  = 4
-    PASS_NO         = 99
+    """ Pass type a member posses
+    """
+
+    PASS_NO         = 0
+    PASS_LIMITED    = 1
+    PASS_UNLIMITED  = 2
 
 class AccountType(Enum):
     ADMIN       = 0
@@ -213,9 +211,12 @@ def send_welcome_email(email_to: str, qr_path: Path,
                        name: str, surname: str,
                        login: str, password: str) -> None:
     
+    if os.getenv("SEND_WELCOME_EMAIL") == "False":
+        return
+
     # Get needed data from environmental vars
-    email_from = os.getenv("EMAIL_USER_NAME")
-    email_pass = os.getenv("EMAIL_APP_PASS")
+    email_from = os.getenv("ROOT_EMAIL")
+    email_pass = os.getenv("ROOT_EMAIL_APP_PASS")
 
     # Get email body from file
     with open('welcome_email_template.txt', 'r', encoding='utf-8') as file:
@@ -254,7 +255,20 @@ def send_welcome_email_member(email_to: str, qr_path: Path, member: Member | Mem
                        member.name, member.surname,
                        member.username, member.password)
 
-def get_member_based_on_default_value(member: dict) -> dict:
+def dict_to_Member(member_dict: dict) -> Member:
+    def safe_enum_value_convert(val):
+        return int(val.value) if isinstance(val, Enum) else val
+    
+    # Probably will be needed in future
+    member = Member(
+        **{**member_dict,
+            "account_type": safe_enum_value_convert(member_dict["account_type"]),
+            "pass_type": safe_enum_value_convert(member_dict["pass_type"]),
+        }
+    )
+    return member
+
+def get_member_based_on_default_value(member: dict, as_member: bool = False) -> dict:
     # "date_of_birth": date.strftime(date(2050, 1, 1), "%Y-%m-%d"),
     # "expiration_date": date.strftime(date.today(), "%Y-%m-%d"),
     # "register_date": date.strftime(date.today(), "%Y-%m-%d"),
@@ -266,12 +280,12 @@ def get_member_based_on_default_value(member: dict) -> dict:
         "name": "Name",
         "surname": "Surname",
         "email": "mail@gmail.com",
-        "phone_number": "000 000 000",
+        "phone_number": None,
         
-        "date_of_birth": None, # date(2050, 1, 1),
+        "date_of_birth": None, #date.min,
 
-        "pass_type": PassType.PASS_NO,
-        "account_type": AccountType.MEMBER,
+        "pass_type": int(PassType.PASS_NO.value),
+        "account_type": int(AccountType.MEMBER.value),
         "entrances_left": 0,
         "expiration_date": date.today() + timedelta(weeks=5),
         "register_date": date.today(),
@@ -284,23 +298,11 @@ def get_member_based_on_default_value(member: dict) -> dict:
         "activated": False,
     }
     member = {**member_default, **member}
-
+    if as_member:
+        member = dict_to_Member(member)
     # Add some validation here (?)
     # ...
 
-    return member
-
-def dict_to_Member(member_dict: dict) -> Member:
-    def safe_enum_value_convert(val):
-        return val.value if isinstance(val, Enum) else val
-    
-    # Probably will be needed in future
-    member = Member(
-        **{**member_dict,
-            "account_type": int(safe_enum_value_convert(member_dict["account_type"])),
-            "pass_type": int(safe_enum_value_convert(member_dict["pass_type"]))
-        }
-    )
     return member
 #===========================================================
 
@@ -329,21 +331,22 @@ def check_create_root(db: Session) -> bool:
         root_values = {
             "name": os.getenv("ROOT_NAME"),
             "surname": os.getenv("ROOT_SURNAME"),
-            "email": os.getenv("EMAIL_USER_NAME"),
-            "username": "root",
+            "email": os.getenv("EMAIL_USER"),
+            "username": os.getenv("ROOT_DEFAULT_LOGIN"),
+            "password": os.getenv("ROOT_DEFAULT_PASS"),
             "account_type": AccountType.ADMIN
         }
-        root_values = get_member_based_on_default_value(root_values)
+        root: Member = get_member_based_on_default_value(root_values, as_member=True)
 
-        # Create a root member and fill it with default values
-        root: Member = dict_to_Member(root_values)
+        # Create QR Code value --> add it to root
+        qr_value: str = generate_qr_code_value(db)
+        root.card_id = qr_value
 
         # Add it to a database
         db.add(root)
         db.commit()
 
-        # Create QR Code
-        qr_value: str = generate_qr_code_value(db)
+        # Generate qr code
         qr_code: Path = generate_qr_code(qr_value, 
                                          root.name, root.surname)
 
@@ -359,7 +362,7 @@ def check_create_root(db: Session) -> bool:
     return False
 #===========================================================
 
-""" FastAPI Members """
+""" FastAPI """
 
 @app.post("/members/check_create_root")
 def api_check_create_root(db: Session = Depends(get_db)) -> JSONResponse:
@@ -368,8 +371,8 @@ def api_check_create_root(db: Session = Depends(get_db)) -> JSONResponse:
     return JSONResponse(status_code=200, content={"status": "OK", "message": "Root already exists"})
 
 @app.post("/members/{card_id}/add")
-def add_member(card_id: str,
-               new_member: dict, db: Session = Depends(get_db)):
+def members_add(card_id: str,
+               new_member: MemberAddRequest, db: Session = Depends(get_db)):
     
     """ Add a new member by administrator """
     
@@ -384,16 +387,11 @@ def add_member(card_id: str,
                             detail="No user with such id was found in database")
 
     # Check if user possess admin rights
-    if user.account_type != AccountType.ADMIN:
+    if user.account_type != AccountType.ADMIN.value:
         raise HTTPException(status_code=401,
                             detail="The user has to possses admin role to add new members")
-
-    # SCheck if user with such email or username(login) already exists 
-    username_exists = db.query(Member).filter(Member.username == new_member.username).first()
-    if username_exists is not None:
-        raise HTTPException(status_code=400,
-                            detail="User with such username already registered")
     
+    # Check if such email already in use
     email_exists = db.query(Member).filter(Member.email == new_member.email).first()
     if email_exists is not None:
         raise HTTPException(status_code=400,
@@ -402,18 +400,17 @@ def add_member(card_id: str,
     # Validate correctness of the data being provided
     # Name, Surname should be present; Unique username; strong password
     # Think about scanning the id card as a method of log in to the app + password.
+    if new_member.account_type is None:
+        new_member.account_type = int(AccountType.MEMBER.value)
 
-    # Generate new QR code
+    # Generate new QR code value
     qr_value: str = generate_qr_code_value(db)
-    qr_code: Path = generate_qr_code(qr_value, 
-                                     new_member["name"], new_member["surname"])
 
     # Override default values
-    new_member["card_id"] = qr_value
-    new_member = get_member_based_on_default_value(new_member)
+    new_member: Member = get_member_based_on_default_value(new_member.model_dump(), as_member=True)
+    new_member.card_id = qr_value
 
     # Add new member to a database --> Update the database.
-    new_member = Member(**new_member)
     db.add(new_member)
     db.commit()
     print("member with card id {} added".format(new_member.card_id))
@@ -426,11 +423,99 @@ def add_member(card_id: str,
 
     # return from the function
     return JSONResponse(status_code=201, content={"status": "OK", "message": "New member has been added"})
-#===========================================================
 
-""" FastAPI login """
+@app.post("/members/{card_id}/checkin")
+def members_checkin(card_id: str,
+                    checkin: CheckInRequest,
+                    db_members: Session = Depends(get_db),
+                    db_checkin: Session = Depends(get_db_entrances)):
+    """ Add new check into the corresponding database
 
-@app.post("/login/username")
+    Args:
+        card_id (str): Card ID of the person who performing check in
+        checkin (CheckInRequest): All the data needed to perform a checkin
+        db_members (Session, optional): Main database: all members provided. Defaults to Depends(get_db).
+        db_checkin (Session, optional): CheckIn database: serves to store checkin history. Defaults to Depends(get_db_entrances).
+    """
+    
+    # Get data about the person who scans
+    member_who_scans = db_members.query(Member).filter(Member.card_id == card_id).first()
+    if not member_who_scans:
+        raise HTTPException(status_code=400,
+                            detail="No Admin or Instructor with such id was found in database")
+    
+    print(member_who_scans.name, member_who_scans.account_type)
+    # Check if person have rights to checkin someone
+    if ((AccountType(member_who_scans.account_type) != AccountType.ADMIN) and
+        (AccountType(member_who_scans.account_type) != AccountType.INSTRUCTOR)):
+        raise HTTPException(status_code=401,
+                            detail="The user has to possses admin or instructor role to checkIn members")
+    
+    # Get data about the member being scanned
+    member_being_scanned = db_members.query(Member).filter(Member.card_id == checkin.card_id).first()
+    if not member_who_scans:
+        raise HTTPException(status_code=400,
+                            detail="No member with such id was found in database")
+    
+    """ Validate person which is being scanned """
+    # Payment through external tool --> scip some validations
+    if ((checkin.payment_by_externa_tool is False) or
+        (member_being_scanned.account_type == AccountType.ADMIN)):
+        # Date of the pass is finished
+        if member_being_scanned.expiration_date > date.today():
+            raise HTTPException(status_code=403,
+                                detail="Pass date is expired")
+        
+        # No entrances left
+        if member_being_scanned.entrances_left <= 0:
+            raise HTTPException(status_code=403,
+                                detail="No more entrances left")
+        
+    """ Update both databases: main and checkin """
+    scan_datetime = datetime.now()
+
+    # Assemble data to create checkin entry --> commit it to the database
+    checkin_entry_data = {
+        "control_card_id": member_who_scans.card_id,
+        "control_name": member_who_scans.name,
+        "control_surname": member_who_scans.surname,
+        "hall": checkin.hall,
+        "card_id": member_being_scanned.card_id,
+        "name": member_being_scanned.name,
+        "surname": member_being_scanned.surname,
+        "date_time": scan_datetime,
+    }
+    checkin_entry: CheckInEntry = CheckInEntry(**checkin_entry_data)
+    db_checkin.add(checkin_entry)
+    db_checkin.commit()
+
+    # Update information about the member --> Store it
+    member_being_scanned.entrances_left = member_being_scanned.entrances_left - 1
+    member_being_scanned.last_check_in = scan_datetime
+    db_members.commit()
+    db_members.refresh(member_being_scanned)
+
+    return JSONResponse(status_code=201, content={"status": "OK", "message": "CheckIn Success"})
+
+@app.post("/members/update/")
+def members_update(updates: MemberUpdateRequest,
+                   db: Session = Depends(get_db)):
+    
+    # Get the user which data is about to change
+    member: Member = get_member_by_card_id(db, updates.card_id)
+    if member is None:
+        raise HTTPException(status_code=400,
+                            detail="Such member in database was not found")
+    
+    # Modify every set (Not equake to None) value
+    for key, value in updates.dict(exclude_unset=True).items():
+        setattr(member, key, value)
+
+    db.commit()
+    db.refresh(member)
+    return {"status": "success", "updated_member": member.card_id}
+
+@app.post("/login/username", response_model=LogInResponse)
 def login_by_username(login_data: LogIn,
                       db: Session = Depends(get_db)):
     """ Validates if user with such login exists &&
@@ -438,22 +523,49 @@ def login_by_username(login_data: LogIn,
         Everything is OK --> responces with user data. 
     """
     
-    member = get_member_by_username(db, username=login_data.username)
+    # Check if user with such username and password exists
+    member = db.query(Member).filter(
+        Member.username == login_data.username,
+        Member.password == login_data.password
+    ).first()
     
     # Such username does not exists or password is wrong --> raise corresponding error
     if member is None:
         raise HTTPException(status_code=401,
                             detail="Wrong login or password")
     
-    if member.password != login_data.password:
-        raise HTTPException(status_code=401,
-                            detail="Wrong login or password")
-    
     # Response with user data
-    content = {
-        "status": "OK",
-        "name": member.name,
-        "surname": member.surname
+    return member
+
+@app.post("/checkin/log/filtered", response_model=list[CheckInLogResponse])
+def get_checkin_log_filtered(filters: CheckInLogFilters,
+                             db: Session = Depends(get_db_entrances)):
+    # If all filters were None --> throw an exception
+    if all(value is None for value in filters.dict(exclude_unset=False).values()):
+        raise HTTPException(status_code=400,
+                            detail="Impossible to return data - no filters were provided.")
+    
+    # Make query wich will apply all filters provided.
+    query = db.query(CheckInEntry)
+
+    field_map = {
+        "control_card_id": CheckInEntry.control_card_id,
+        "control_name" : CheckInEntry.control_name,
+        "control_surname": CheckInEntry.control_surname,
+        "hall": CheckInEntry.hall,
+        "card_id": CheckInEntry.card_id,
+        "name": CheckInEntry.name,
+        "surname": CheckInEntry.surname,
+        "date_time": CheckInEntry.date_time,
     }
-    return JSONResponse(status_code=200, content=content)
+
+    for key, value in filters.dict(exclude_unset=True).items():
+        if value is not None:
+            if key == "date_time_min":
+                query = query.filter(CheckInEntry.date_time >= value)
+            elif key == "date_time_max":
+                query = query.filter(CheckInEntry.date_time <= value)
+            else:
+                attr = field_map[key]
+                query = query.filter(attr.ilike(value))
 #===========================================================
