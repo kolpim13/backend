@@ -46,7 +46,7 @@ class Member(Base):
     # Is Card activated - probably will be needed in future.
     activated = Column(Boolean)
 
-class CheckInLog(BaseEntrances):
+class CheckInEntry(BaseEntrances):
     """ Database to store all entrances log """
 
     __tablename__ = "entrance_log"
@@ -57,7 +57,7 @@ class CheckInLog(BaseEntrances):
     control_card_id = Column(String)
     control_name = Column(String)
     control_surname = Column(String)
-    hall = Column(Integer)
+    hall = Column(String)
 
     # Information about the member
     card_id = Column(String)

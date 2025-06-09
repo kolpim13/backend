@@ -1,5 +1,6 @@
 import base64
 import os
+from warnings import filters
 import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
@@ -7,9 +8,12 @@ import qrcode
 import PIL
 import requests
 import datetime
-from fastapi import HTTPException
+from sqlalchemy.orm import Session
+from fastapi import Depends, HTTPException
 from datetime import date
-from models import Base, Member
+from main import get_db_entrances
+from database import SessionLocal, engine, SessionLocalEntrances, engine_entrances
+from models import Base, BaseEntrances, Member, CheckInEntry
 from pathlib import Path
 from email.message import EmailMessage
 import dotenv
@@ -17,10 +21,57 @@ import smtplib
 import ssl
 import socket
 
+from schemas import CheckInLogFilters
+
 # from sendgrid import SendGridAPIClient
 # from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
 
 API_URL = "http://localhost:8000"
+
+def test_check_in() -> None:
+    checkin = {
+        "card_id": "GNGitWJeZveU",
+    }
+    response = requests.post("{api_url}/members/{card_id}/checkin".format(api_url=API_URL, card_id="Sad6b1ufekF7"), json=checkin)
+    return response
+
+def update_member() -> None:
+    pass
+
+def get_checkin_log_filtered(filters: CheckInLogFilters,
+                            db: Session = SessionLocalEntrances()):
+    # If all filters were None --> throw an exception
+    if all(value is None for value in filters.model_dump(exclude_unset=False).values()):
+        raise HTTPException(status_code=400,
+                            detail="Impossible to return data - no filters were provided.")
+    
+    field_map = {
+        "control_card_id": CheckInEntry.control_card_id,
+        "control_name" : CheckInEntry.control_name,
+        "control_surname": CheckInEntry.control_surname,
+        "hall": CheckInEntry.hall,
+        "card_id": CheckInEntry.card_id,
+        "name": CheckInEntry.name,
+        "surname": CheckInEntry.surname,
+        "date_time": CheckInEntry.date_time,
+    }
+
+    # Create query --> add filters 
+    query = db.query(CheckInEntry)
+    if filters.name:
+        query = query.filter(CheckInEntry.name.ilike(f"%{filters.name}%"))
+
+    # for key, value in filters.model_dump(exclude_unset=True).items():
+    #     if key == "date_time_min":
+    #         query = query.filter(CheckInEntry.date_time >= value)
+    #     elif key == "date_time_max":
+    #         query = query.filter(CheckInEntry.date_time <= value)
+    #     else:
+    #         attr = field_map[key]
+    #         query = query.filter(attr == value)
+
+    log = query.all()
+    return log
 
 def check_create_root() -> None:
     response = requests.post("{api_url}/members/check_create_root".format(api_url=API_URL))
@@ -45,7 +96,7 @@ def add_member() -> None:
     }
 
     # Try to send data to the database
-    response = requests.post("{api_url}/members/{user_id}/add".format(api_url=API_URL, user_id="i3Te8Gdmoo2r"), json=data)
+    response = requests.post("{api_url}/members/{user_id}/add".format(api_url=API_URL, user_id="lgCBZI3XKNtn"), json=data)
     if response.status_code == 200:
         print("✅ Member added successfully.")
     else:
@@ -164,7 +215,15 @@ def send_email_with_info(path_to_qr: Path, email_to_send: str) -> None:
 if __name__ == "__main__":
     # qr = generate_qr_code(code="MazurAn123", name="Anastazja", surname="Mazur")
     # send_email_with_info(path_to_qr=qr, email_to_send="anastasiia.mazur@gmail.com")
+    
+    # Base.metadata.create_all(bind=engine)
+    # BaseEntrances.metadata.create_all(bind=engine_entrances)
+    # filters: CheckInLogFilters = CheckInLogFilters()
+    # filters.name = "Maksym"
+    # get_checkin_log_filtered(filters)
     # exit()
+
+    test_check_in()
 
     while True:
         print("\n--- Dance School Terminal ---")
