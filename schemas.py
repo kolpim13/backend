@@ -5,6 +5,9 @@ from typing import Optional
 
 """ REQUEST SCHEMES """
 
+class MemberInfoReq(BaseModel):
+    card_id: str
+
 class CheckInRequest(BaseModel):
     """ Data needed to perform a checkin operation.
     """
@@ -14,7 +17,10 @@ class CheckInRequest(BaseModel):
     payment_by_externa_tool: Optional[bool] = False
 
 class CheckInLogFilters(BaseModel):
-    control_card_id: Optional[str] = None
+    # Maximum amount of data to get
+    limit: int
+
+    # Data about person who scanned and where
     control_name: Optional[str] = None
     control_surname: Optional[str] = None
     hall: Optional[str] = None
@@ -24,7 +30,7 @@ class CheckInLogFilters(BaseModel):
     name: Optional[str] = None
     surname: Optional[str] = None
 
-    # Checkin date & time + [additional information ?]
+    # Checkin date & time
     date_time_min: Optional[datetime] = None
     date_time_max: Optional[datetime] = None
 
@@ -56,6 +62,18 @@ class MemberAddRequest(BaseModel):
 
 """ RESPONSE SCHEMES """
 
+class MemberInfoResp(BaseModel):
+    """ Information about the member returned on request
+    """
+
+    card_id: str
+    name: str
+    surname: str
+    email: str
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
+    account_type: int
+
 class LogInResponse(BaseModel):
     """ Data to return when user LogIn
     """
@@ -72,8 +90,18 @@ class LogInResponse(BaseModel):
         from_attributes = True
 
 class CheckInLogResponse(BaseModel):
+    # Data about person who scanned and where
+    control_name: str
+    control_surname: str
+    hall: str
 
+    # Information about the member
+    card_id: str
+    name: str
+    surname: str
 
+    # Checkin date_time
+    date_time: datetime
     class Config:
         from_attributes = True
 #===========================================================

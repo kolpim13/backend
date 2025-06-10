@@ -21,7 +21,7 @@ from models import Base, BaseEntrances, Member, CheckInEntry
 from enum import Enum
 from pathlib import Path
 
-from schemas import CheckInLogResponse, CheckInLogFilters, CheckInRequest, LogInResponse, MemberAddRequest, MemberUpdateRequest
+from schemas import CheckInLogResponse, CheckInLogFilters, CheckInRequest, LogInResponse, MemberAddRequest, MemberInfoReq, MemberInfoResp, MemberUpdateRequest
 #===========================================================
 
 """ START THE APPLICATION """
@@ -508,12 +508,35 @@ def members_update(updates: MemberUpdateRequest,
                             detail="Such member in database was not found")
     
     # Modify every set (Not equake to None) value
-    for key, value in updates.dict(exclude_unset=True).items():
+    for key, value in updates.model_dump(exclude_unset=True).items():
         setattr(member, key, value)
 
     db.commit()
     db.refresh(member)
     return {"status": "success", "updated_member": member.card_id}
+
+@app.post("/members/{card_id}/get/member_info", response_model=MemberInfoResp)
+def get_member_info(card_id: str,
+                    req: MemberInfoReq,
+                    db: Session = Depends(get_db)):
+    
+    # CheckValidate user who is making a request
+    user: Member = get_member_by_card_id(db, card_id)
+    if user is None:
+        raise HTTPException(status_code=400,
+                            detail="No such token in member database")
+    
+    if AccountType(user.account_type) not in [AccountType.ADMIN, AccountType.INSTRUCTOR]:
+        raise HTTPException(status_code=400,
+                            detail="User has no right get this information")
+
+    # Validate member`s card id is correct
+    member: Member = get_member_by_card_id(db, req.card_id)
+    if member is None:
+        raise HTTPException(status_code=400,
+                            detail="Member ID was not found")
+    
+    return member
 
 @app.post("/login/username", response_model=LogInResponse)
 def login_by_username(login_data: LogIn,
@@ -541,31 +564,65 @@ def login_by_username(login_data: LogIn,
 def get_checkin_log_filtered(filters: CheckInLogFilters,
                              db: Session = Depends(get_db_entrances)):
     # If all filters were None --> throw an exception
-    if all(value is None for value in filters.dict(exclude_unset=False).values()):
+    if all(value is None for value in filters.model_dump(exclude_unset=False).values()):
         raise HTTPException(status_code=400,
                             detail="Impossible to return data - no filters were provided.")
     
+    """
     # Make query wich will apply all filters provided.
+    # field_map = {
+    #     "control_card_id": CheckInEntry.control_card_id,
+    #     "control_name" : CheckInEntry.control_name,
+    #     "control_surname": CheckInEntry.control_surname,
+    #     "hall": CheckInEntry.hall,
+    #     "card_id": CheckInEntry.card_id,
+    #     "name": CheckInEntry.name,
+    #     "surname": CheckInEntry.surname,
+    #     "date_time": CheckInEntry.date_time,
+    # }
+    # for key, value in filters.model_dump(exclude_unset=True).items():
+    #     if value is not None:
+    #         if key == "date_time_min":
+    #             query = query.filter(CheckInEntry.date_time >= value)
+    #         elif key == "date_time_max":
+    #             query = query.filter(CheckInEntry.date_time <= value)
+    #         else:
+    #             attr = field_map[key]
+    #             query = query.filter(attr.ilike(value))
+    """
+
+    # Create query
     query = db.query(CheckInEntry)
 
-    field_map = {
-        "control_card_id": CheckInEntry.control_card_id,
-        "control_name" : CheckInEntry.control_name,
-        "control_surname": CheckInEntry.control_surname,
-        "hall": CheckInEntry.hall,
-        "card_id": CheckInEntry.card_id,
-        "name": CheckInEntry.name,
-        "surname": CheckInEntry.surname,
-        "date_time": CheckInEntry.date_time,
-    }
+    # Filter etries based on who scanned
+    if filters.control_name:
+        query = query.filter(CheckInEntry.control_name == filters.control_name)
+    
+    if filters.control_surname:
+        query = query.filter(CheckInEntry.control_surname == filters.control_surname)
 
-    for key, value in filters.dict(exclude_unset=True).items():
-        if value is not None:
-            if key == "date_time_min":
-                query = query.filter(CheckInEntry.date_time >= value)
-            elif key == "date_time_max":
-                query = query.filter(CheckInEntry.date_time <= value)
-            else:
-                attr = field_map[key]
-                query = query.filter(attr.ilike(value))
+    if filters.hall:
+        query = query.filter(CheckInEntry.hall == filters.hall)
+
+    # Filter entries based on scanend person
+    if filters.card_id:
+        query = query.filter(CheckInEntry.card_id == filters.card_id)
+    
+    if filters.name:
+        query = query.filter(CheckInEntry.name == filters.name)
+
+    if filters.surname:
+        query = query.filter(CheckInEntry.surname == filters.surname)
+
+    # Filter entries based on time
+    if filters.date_time_min:
+        query = query.filter(CheckInEntry.date_time >= filters.date_time_min)
+
+    if filters.date_time_max:
+        query = query.filter(CheckInEntry.date_time <= filters.date_time_max)
+
+    # Get data from the database [ordered by the date time && with limit]
+    data = query.order_by(CheckInEntry.date_time).limit(filters.limit).all()
+    return data
+    
 #===========================================================
