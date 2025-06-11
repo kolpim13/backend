@@ -1,27 +1,22 @@
 import os
-import random
-import string
 from typing import Optional
-import qrcode
 import dotenv
 import smtplib
-import PIL
-import PIL.Image
-import PIL.ImageDraw
-import PIL.ImageFont
-import PIL.ImageFile
 from email.message import EmailMessage
 from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
-import project_utils as utils
-from models import Base_Members, Base_Checkins, Member, CheckInEntry
+
+from models import Member, CheckInEntry
 from enum import Enum
 from pathlib import Path
 
 from schemas import CheckInLogResponse, CheckInLogFilters, CheckInRequest, LogInResponse, MemberAddRequest, MemberInfoReq, MemberInfoResp, MemberUpdateRequest
+
+import project_utils as utils
+from project_utils import PassType, AccountType
 #===========================================================
 
 """ START THE APPLICATION """
@@ -29,7 +24,8 @@ from schemas import CheckInLogResponse, CheckInLogFilters, CheckInRequest, LogIn
 # Load environment variables
 dotenv.load_dotenv()
 
-# Create tables
+# Prepare environment for work
+utils.check_create_paths()
 utils.databases_init_tables()
 
 # FastAPI application to run
@@ -41,20 +37,6 @@ app = FastAPI(title="Dance School Backend")
 #===========================================================
 
 """ DATA TYPES """
-
-class PassType(Enum):
-    """ Pass type a member posses
-    """
-
-    PASS_NO         = 0
-    PASS_LIMITED    = 1
-    PASS_UNLIMITED  = 2
-
-class AccountType(Enum):
-    ADMIN       = 0
-    INSTRUCTOR  = 1
-    MEMBER      = 2
-
 class MemberIn(BaseModel):
     """_summary_
 
@@ -103,143 +85,6 @@ class LogIn(BaseModel):
 
 """ UTILS """
 
-def get_random_string(len: int) -> str:
-    return ''.join(random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits) for _ in range(len))
-
-def generate_qr_code_value(db: Session = Depends(utils.get_db_members)) -> str:
-    """ Generates unique QR code value """
-
-    while True:
-        code_value = get_random_string(int(os.getenv("QR_CODE_VALUE_LEN")))
-        exists = db.query(Member).filter(Member.card_id == code_value).first()
-        if not exists:
-            return code_value
-
-def generate_qr_code(code: str, name: str, surname: str) -> Path:
-    """ Generates QR Code and places it in folder qr_codes
-    On top it adds name and surname of the recepient
-    On bottom - data (code as text)
-
-    Args:
-        code (str): Code to incode inside QR Image.
-        name (str): Name of the recipient
-        surname (str): Surname of the recipient
-
-    Returns:
-        Path: Path to generated qr code. Each QR has it`s name build based on data provided.
-    """
-
-    def place_text(text: str, height: bool) -> None:
-        """ Serves to
-
-        Args:
-            text (str): _description_
-            height (bool): _description_
-        """
-        bbox = draw.textbbox((0,0), text, font=font)
-        text_w = bbox[2] - bbox[0]
-        
-        draw.text(((img_w - text_w) // 2, height), text, fill="black", font=font)
-        return
-    
-    """ Generating original QR Code """
-    # Set up qr code and add data on it
-    qr = qrcode.QRCode(version=3, box_size=10, border=2)
-    qr.add_data(code)
-    qr.make(fit=True)
-
-    # Generate image from the qr code
-    img = qr.make_image(fill_color="black", back_color="white")
-
-    # Load logo and resize it, so it will fit inside the qr code. 
-    logo = PIL.Image.open("impakt_logo.jpg")
-    logo = logo.resize((75, 100))
-
-    # Calculate coordinates --> place logo in center of QR code
-    img_w, img_h = img.size
-    logo_w, logo_h = logo.size
-    pos = ((img_w - logo_w) // 2, (img_h - logo_h) // 2)
-
-    img.paste(logo, pos)
-
-    """ Making an image from original QR Code"""
-    # Choose font size for the text
-    font_size = 20
-    font = PIL.ImageFont.load_default(size=font_size)
-
-    # Calculate --> add blank space to the original QR Code image
-    padding = font_size * 3 + 10
-    new_img = PIL.Image.new("RGB", (img_w, img_h + padding), "white")
-    draw = PIL.ImageDraw.Draw(new_img)
-
-    # Place name and surname on top
-    place_text(name, 5)
-    place_text(surname, 5 + font_size)
-
-    # Place original QR Code
-    img = img.convert("RGB")
-    new_img.paste(img, (0, 5 + font_size * 2))
-
-    # Place QR Code as text at the very bottom
-    place_text(code, 5 + img_h + font_size * 2)
-
-    # Save QR code on the disc --> return Path to it
-    qr_name = "qr_{name}_{surname}_{code}.png".format(name=name, surname=surname, code=code)
-    qr_path = Path(Path.resolve(Path.cwd()), "qr_codes", qr_name)
-    new_img.save(qr_path)
-    return qr_path
-
-def generate_qr_code_member(member: Member | MemberIn) -> Path:
-    return generate_qr_code(member.card_id, member.name, member.surname)
-
-def send_welcome_email(email_to: str, qr_path: Path,
-                       name: str, surname: str,
-                       login: str, password: str) -> None:
-    
-    if os.getenv("SEND_WELCOME_EMAIL") == "False":
-        return
-
-    # Get needed data from environmental vars
-    email_from = os.getenv("ROOT_EMAIL")
-    email_pass = os.getenv("ROOT_EMAIL_APP_PASS")
-
-    # Get email body from file
-    with open('welcome_email_template.txt', 'r', encoding='utf-8') as file:
-        # Read template
-        email_body = file.read()
-
-        # Replace key words
-        replacement = [
-            ("{name}", name),
-            ("{surname}", surname),
-            ("{login}", login),
-            ("{password}", password),
-        ]
-        for key_word, value in replacement:
-            email_body = email_body.replace(key_word, value)
-
-    # Assemble message
-    msg = EmailMessage()
-    msg['Subject'] = "Welcome to Impakt"
-    msg['From'] = email_from
-    msg['To'] = email_to
-    msg.set_content(email_body)
-
-    # Add QR as an attachment
-    with open(qr_path, 'rb') as qr:
-        qr_image = qr.read()
-        msg.add_attachment(qr_image, maintype='image', subtype='png', filename=qr_path.name)
-
-    # Send email
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
-        smtp.login(email_from, email_pass)
-        smtp.send_message(msg)
-
-def send_welcome_email_member(email_to: str, qr_path: Path, member: Member | MemberIn) -> None:
-    send_welcome_email(email_to, qr_path,
-                       member.name, member.surname,
-                       member.username, member.password)
-
 def dict_to_Member(member_dict: dict) -> Member:
     def safe_enum_value_convert(val):
         return int(val.value) if isinstance(val, Enum) else val
@@ -277,8 +122,8 @@ def get_member_based_on_default_value(member: dict, as_member: bool = False) -> 
 
         "last_check_in": None,
 
-        "username": get_random_string(12),
-        "password": get_random_string(12),
+        "username": utils.get_random_string(12),
+        "password": utils.get_random_string(12),
        
         "activated": False,
     }
@@ -324,7 +169,7 @@ def check_create_root(db: Session) -> bool:
         root: Member = get_member_based_on_default_value(root_values, as_member=True)
 
         # Create QR Code value --> add it to root
-        qr_value: str = generate_qr_code_value(db)
+        qr_value: str = utils.generate_qr_code_value(db)
         root.card_id = qr_value
 
         # Add it to a database
@@ -332,13 +177,14 @@ def check_create_root(db: Session) -> bool:
         db.commit()
 
         # Generate qr code
-        qr_code: Path = generate_qr_code(qr_value, 
+        qr_code: Path = utils.generate_qr_code(qr_value, 
                                          root.name, root.surname)
 
         # Send QR via mail on self email address
-        send_welcome_email(os.getenv("ROOT_EMAIL"), qr_code,
+        utils.send_welcome_email(os.getenv("ROOT_EMAIL"), 
                            root.name, root.surname,
-                           root.username, root.password)
+                           root.username, root.password,
+                           qr_code)
         print("4")
 
         print("Root user was created with default values. Change it`s password and card ID as soon as possible!")
@@ -389,7 +235,7 @@ def members_add(card_id: str,
         new_member.account_type = int(AccountType.MEMBER.value)
 
     # Generate new QR code value
-    qr_value: str = generate_qr_code_value(db)
+    qr_value: str = utils.generate_qr_code_value(db)
 
     # Override default values
     new_member: Member = get_member_based_on_default_value(new_member.model_dump(), as_member=True)
@@ -401,10 +247,10 @@ def members_add(card_id: str,
     print("member with card id {} added".format(new_member.card_id))
 
     # Generate QR Code
-    qr_path = generate_qr_code_member(member=new_member)
+    qr_path = utils.generate_qr_code_member(member=new_member)
 
     # Send an email with the code
-    send_welcome_email_member(email_to=new_member.email, qr_path=qr_path, member=new_member)
+    utils.send_welcome_email_member(member=new_member, qr_path=qr_path)
 
     # return from the function
     return JSONResponse(status_code=201, content={"status": "OK", "message": "New member has been added"})
