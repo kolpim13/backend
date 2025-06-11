@@ -1,11 +1,11 @@
 from sqlalchemy import Column, Integer, Boolean, String, Date, DateTime
-from database import Base, BaseEntrances
+from database import Base_Members, Base_Checkins
 
-class Member(Base):
+class Member(Base_Members):
     """_summary_
 
     Args:
-        Base (_type_): _description_
+        Base_Members (_type_): _description_
     """
 
     # The file name it will be created
@@ -46,7 +46,7 @@ class Member(Base):
     # Is Card activated - probably will be needed in future.
     activated = Column(Boolean)
 
-class CheckInEntry(BaseEntrances):
+class CheckInEntry(Base_Checkins):
     """ Database to store all entrances log """
 
     __tablename__ = "entrance_log"

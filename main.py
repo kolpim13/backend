@@ -16,8 +16,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
-from database import SessionLocal, engine, SessionLocalEntrances, engine_entrances
-from models import Base, BaseEntrances, Member, CheckInEntry
+import project_utils as utils
+from models import Base_Members, Base_Checkins, Member, CheckInEntry
 from enum import Enum
 from pathlib import Path
 
@@ -30,8 +30,7 @@ from schemas import CheckInLogResponse, CheckInLogFilters, CheckInRequest, LogIn
 dotenv.load_dotenv()
 
 # Create tables
-Base.metadata.create_all(bind=engine)
-BaseEntrances.metadata.create_all(bind=engine_entrances)
+utils.databases_init_tables()
 
 # FastAPI application to run
 app = FastAPI(title="Dance School Backend")
@@ -104,24 +103,10 @@ class LogIn(BaseModel):
 
 """ UTILS """
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-def get_db_entrances():
-    db = SessionLocalEntrances()
-    try:
-        yield db
-    finally:
-        db.close()
-
 def get_random_string(len: int) -> str:
     return ''.join(random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits) for _ in range(len))
 
-def generate_qr_code_value(db: Session = Depends(get_db)) -> str:
+def generate_qr_code_value(db: Session = Depends(utils.get_db_members)) -> str:
     """ Generates unique QR code value """
 
     while True:
@@ -365,14 +350,14 @@ def check_create_root(db: Session) -> bool:
 """ FastAPI """
 
 @app.post("/members/check_create_root")
-def api_check_create_root(db: Session = Depends(get_db)) -> JSONResponse:
+def api_check_create_root(db: Session = Depends(utils.get_db_members)) -> JSONResponse:
     if check_create_root(db) is True:
         return JSONResponse(status_code=201, content={"status": "OK", "message": "Default root user created"})
     return JSONResponse(status_code=200, content={"status": "OK", "message": "Root already exists"})
 
 @app.post("/members/{card_id}/add")
 def members_add(card_id: str,
-               new_member: MemberAddRequest, db: Session = Depends(get_db)):
+               new_member: MemberAddRequest, db: Session = Depends(utils.get_db_members)):
     
     """ Add a new member by administrator """
     
@@ -427,15 +412,15 @@ def members_add(card_id: str,
 @app.post("/members/{card_id}/checkin")
 def members_checkin(card_id: str,
                     checkin: CheckInRequest,
-                    db_members: Session = Depends(get_db),
-                    db_checkin: Session = Depends(get_db_entrances)):
+                    db_members: Session = Depends(utils.get_db_members),
+                    db_checkin: Session = Depends(utils.get_db_checkins)):
     """ Add new check into the corresponding database
 
     Args:
         card_id (str): Card ID of the person who performing check in
         checkin (CheckInRequest): All the data needed to perform a checkin
-        db_members (Session, optional): Main database: all members provided. Defaults to Depends(get_db).
-        db_checkin (Session, optional): CheckIn database: serves to store checkin history. Defaults to Depends(get_db_entrances).
+        db_members (Session, optional): Main database: all members provided. Defaults to Depends(utils.get_db_members).
+        db_checkin (Session, optional): CheckIn database: serves to store checkin history. Defaults to Depends(utils.get_db_checkins).
     """
     
     # Get data about the person who scans
@@ -499,7 +484,7 @@ def members_checkin(card_id: str,
 
 @app.post("/members/update/")
 def members_update(updates: MemberUpdateRequest,
-                   db: Session = Depends(get_db)):
+                   db: Session = Depends(utils.get_db_members)):
     
     # Get the user which data is about to change
     member: Member = get_member_by_card_id(db, updates.card_id)
@@ -518,7 +503,7 @@ def members_update(updates: MemberUpdateRequest,
 @app.post("/members/{card_id}/get/member_info", response_model=MemberInfoResp)
 def get_member_info(card_id: str,
                     req: MemberInfoReq,
-                    db: Session = Depends(get_db)):
+                    db: Session = Depends(utils.get_db_members)):
     
     # CheckValidate user who is making a request
     user: Member = get_member_by_card_id(db, card_id)
@@ -540,7 +525,7 @@ def get_member_info(card_id: str,
 
 @app.post("/login/username", response_model=LogInResponse)
 def login_by_username(login_data: LogIn,
-                      db: Session = Depends(get_db)):
+                      db: Session = Depends(utils.get_db_members)):
     """ Validates if user with such login exists &&
         If the password provided was correct.
         Everything is OK --> responces with user data. 
@@ -562,7 +547,7 @@ def login_by_username(login_data: LogIn,
 
 @app.post("/checkin/log/filtered", response_model=list[CheckInLogResponse])
 def get_checkin_log_filtered(filters: CheckInLogFilters,
-                             db: Session = Depends(get_db_entrances)):
+                             db: Session = Depends(utils.get_db_checkins)):
     # If all filters were None --> throw an exception
     if all(value is None for value in filters.model_dump(exclude_unset=False).values()):
         raise HTTPException(status_code=400,
@@ -624,5 +609,4 @@ def get_checkin_log_filtered(filters: CheckInLogFilters,
     # Get data from the database [ordered by the date time && with limit]
     data = query.order_by(CheckInEntry.date_time).limit(filters.limit).all()
     return data
-    
 #===========================================================

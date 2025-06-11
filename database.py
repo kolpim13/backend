@@ -2,15 +2,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-DB_URL = "sqlite:///./members.db"
-DB_ENTRANCES_URL = "sqlite:///./entrances.db"
+DB_MEMBERS_URL = "sqlite:///./databases/members.db"
+DB_CHECKINS_URL = "sqlite:///./databases/checkins.db"
 
 # Database for the members
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-Base = declarative_base()
+engine_members = create_engine(DB_MEMBERS_URL, connect_args={"check_same_thread": False})
+SessionLocal_Members = sessionmaker(bind=engine_members, autoflush=False, autocommit=False)
+Base_Members = declarative_base()
 
 # Database to log all entrances done
-engine_entrances = create_engine(DB_ENTRANCES_URL, connect_args={"check_same_thread": False})
-SessionLocalEntrances = sessionmaker(bind=engine_entrances, autocommit=False, autoflush=False)
-BaseEntrances = declarative_base()
+engine_checkins = create_engine(DB_CHECKINS_URL, connect_args={"check_same_thread": False})
+SessionLocal_Checkins = sessionmaker(bind=engine_checkins, autoflush=False, autocommit=False,)
+Base_Checkins = declarative_base()
