@@ -3,6 +3,7 @@ import os
 import random
 import string
 from pathlib import Path
+from datetime import date, timedelta
 from enum import Enum
 
 # Poject-specific / Specialized packages
@@ -46,11 +47,119 @@ class AccountType(Enum):
     MEMBER: int      = 2
 #===========================================================
 
-""" DATABASE RELATED ACTIONS """
+""" STARTUP ACTIONS """
+def check_create_root(db: Session = SessionLocal_Members()) -> bool:
+    """ Function should be executed on the very beginning of the program to check if there is a "root" member present.
+        If it does not --> create one with default username and password written in an ".env" configuration file.  
+    """
+
+    # Try to get root user from the database
+    root = get_member_by_username(db, os.getenv("ROOT_LOGIN"))
+
+    # Root does not exists --> create default one
+    if root is None:
+        print("No root user was found in the database --> start of creating a new one.")
+
+        # Generate QR Code value
+        qr_value: str = generate_qr_code_value(db)
+
+        # Setup root user value
+        root_values = {
+            "card_id": qr_value,
+            "name": os.getenv("ROOT_NAME"),
+            "surname": os.getenv("ROOT_SURNAME"),
+            "email": os.getenv("ROOT_EMAIL"),
+            "username": os.getenv("ROOT_LOGIN"),
+            "password": os.getenv("ROOT_PASS"),
+            "account_type": AccountType.ADMIN
+        }
+        root: Member = get_member_from_dict(root_values)
+
+        # Add it to a database
+        db.add(root)
+        db.commit()
+
+        # Generate qr code
+        qr_code: Path = generate_qr_code(qr_value, 
+                                         root.name, root.surname)
+
+        # Send QR Code via email on self email address
+        if os.getenv("SEND_WELCOME_EMAIL_ROOT") == "True":
+            send_welcome_email_member(member=root,
+                                       qr_path=qr_code)
+            
+        print("Root user was created with default values. Change it`s password and card ID as soon as possible!")
+        return True
+    
+    return False
+
+def check_create_paths() -> None:
+    paths = (PATH_DATABASES, PATH_TEMPLATES, PATH_QR_CODES)
+    for path in paths:
+        if path.exists() is False:
+            path.mkdir(parents=True, exist_ok=False)
+
 def databases_init_tables() -> None:
     Base_Members.metadata.create_all(bind=engine_members)
     Base_Checkins.metadata.create_all(bind=engine_checkins)
     return
+#===========================================================
+
+""" DATABASE RELATED ACTIONS """
+def dict_to_Member(member_dict: dict) -> Member:
+    def safe_enum_value_convert(val):
+        return val.value if isinstance(val, Enum) else val
+    
+    # Probably will be needed in future
+    member = Member(
+        **{**member_dict,
+            "account_type": safe_enum_value_convert(member_dict["account_type"]),
+            "pass_type": safe_enum_value_convert(member_dict["pass_type"]),
+        }
+    )
+    return member
+
+def get_member_from_dict(member: dict) -> Member:
+    """ Function is used to construct member from a req schema.
+        All unset fields will be set with default values. 
+        As input: any Request from "schemas" can be used (via .model_dump()).
+    """
+
+    default = {
+        "card_id": None,
+
+        "name": "Name",
+        "surname": "Surname",
+        "email": "mail@gmail.com",
+        "phone_number": None,
+        
+        "date_of_birth": None, #date.min,
+
+        "pass_type": PassType.NO,
+        "account_type": AccountType.MEMBER,
+        "entrances_left": 0,
+        "expiration_date": None, #date.today() + timedelta(weeks=5),
+        "register_date": date.today(),
+
+        "last_check_in": None,
+
+        "username": get_random_string(12),
+        "password": get_random_string(12),
+       
+        "activated": False,
+    }
+    member = {**default, **member}
+    member = dict_to_Member(member) # Probably not needed
+    # Add some validation here (?)
+    # ...
+
+    return member
+
+def get_member_by_card_id(db: Session, card_id: str) -> Member:
+    return db.query(Member).filter(Member.card_id == card_id).first()
+
+def get_member_by_username(db: Session, username: str) -> Member:
+    return db.query(Member).filter(Member.username == username).first()
 
 """ Functions to use databases inside FastAPI through "Depends". """
 def get_db_members():

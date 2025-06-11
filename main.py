@@ -27,6 +27,7 @@ dotenv.load_dotenv()
 # Prepare environment for work
 utils.check_create_paths()
 utils.databases_init_tables()
+utils.check_create_root()
 
 # FastAPI application to run
 app = FastAPI(title="Dance School Backend")
@@ -83,121 +84,10 @@ class LogIn(BaseModel):
     password: str
 #===========================================================
 
-""" UTILS """
-
-def dict_to_Member(member_dict: dict) -> Member:
-    def safe_enum_value_convert(val):
-        return int(val.value) if isinstance(val, Enum) else val
-    
-    # Probably will be needed in future
-    member = Member(
-        **{**member_dict,
-            "account_type": safe_enum_value_convert(member_dict["account_type"]),
-            "pass_type": safe_enum_value_convert(member_dict["pass_type"]),
-        }
-    )
-    return member
-
-def get_member_based_on_default_value(member: dict, as_member: bool = False) -> dict:
-    # "date_of_birth": date.strftime(date(2050, 1, 1), "%Y-%m-%d"),
-    # "expiration_date": date.strftime(date.today(), "%Y-%m-%d"),
-    # "register_date": date.strftime(date.today(), "%Y-%m-%d"),
-    # "last_check_in": datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"),
-
-    member_default = {
-        "card_id": None,
-
-        "name": "Name",
-        "surname": "Surname",
-        "email": "mail@gmail.com",
-        "phone_number": None,
-        
-        "date_of_birth": None, #date.min,
-
-        "pass_type": int(PassType.PASS_NO.value),
-        "account_type": int(AccountType.MEMBER.value),
-        "entrances_left": 0,
-        "expiration_date": date.today() + timedelta(weeks=5),
-        "register_date": date.today(),
-
-        "last_check_in": None,
-
-        "username": utils.get_random_string(12),
-        "password": utils.get_random_string(12),
-       
-        "activated": False,
-    }
-    member = {**member_default, **member}
-    if as_member:
-        member = dict_to_Member(member)
-    # Add some validation here (?)
-    # ...
-
-    return member
-#===========================================================
-
-""" Database related """
-
-def get_member_by_card_id(db: Session, card_id: str) -> Member:
-    member: Member = db.query(Member).filter(Member.card_id == card_id).first()
-    return member
-
-def get_member_by_username(db: Session, username: str) -> Member:
-    member: Member = db.query(Member).filter(Member.username == username).first()
-    return member
-
-def check_create_root(db: Session) -> bool:
-    """ Function should be on the very beginning of the execution to check if there is a "root: user present
-        If it does not --> create one with default username and password  
-    """
-
-    # Try to get root user from the database
-    root = get_member_by_username(db, "root")
-
-    # Root does not exists --> create default one
-    if root is None:
-        print("No root user was found in the database --> start of creating a new one.")
-
-        root_values = {
-            "name": os.getenv("ROOT_NAME"),
-            "surname": os.getenv("ROOT_SURNAME"),
-            "email": os.getenv("ROOT_EMAIL"),
-            "username": os.getenv("ROOT_DEFAULT_LOGIN"),
-            "password": os.getenv("ROOT_DEFAULT_PASS"),
-            "account_type": AccountType.ADMIN
-        }
-        root: Member = get_member_based_on_default_value(root_values, as_member=True)
-
-        # Create QR Code value --> add it to root
-        qr_value: str = utils.generate_qr_code_value(db)
-        root.card_id = qr_value
-
-        # Add it to a database
-        db.add(root)
-        db.commit()
-
-        # Generate qr code
-        qr_code: Path = utils.generate_qr_code(qr_value, 
-                                         root.name, root.surname)
-
-        # Send QR via mail on self email address
-        utils.send_welcome_email(os.getenv("ROOT_EMAIL"), 
-                           root.name, root.surname,
-                           root.username, root.password,
-                           qr_code)
-        print("4")
-
-        print("Root user was created with default values. Change it`s password and card ID as soon as possible!")
-        return True
-    
-    return False
-#===========================================================
-
 """ FastAPI """
-
 @app.post("/members/check_create_root")
 def api_check_create_root(db: Session = Depends(utils.get_db_members)) -> JSONResponse:
-    if check_create_root(db) is True:
+    if utils.check_create_root(db) is True:
         return JSONResponse(status_code=201, content={"status": "OK", "message": "Default root user created"})
     return JSONResponse(status_code=200, content={"status": "OK", "message": "Root already exists"})
 
@@ -208,7 +98,7 @@ def members_add(card_id: str,
     """ Add a new member by administrator """
     
     # Get data of the user is requesting for the operation
-    user: Member = get_member_by_card_id(db, card_id)
+    user: Member = utils.get_member_by_card_id(db, card_id)
 
     # Check if such user exists
     if user is None:
@@ -238,7 +128,7 @@ def members_add(card_id: str,
     qr_value: str = utils.generate_qr_code_value(db)
 
     # Override default values
-    new_member: Member = get_member_based_on_default_value(new_member.model_dump(), as_member=True)
+    new_member: Member = utils.get_member_from_dict(new_member.model_dump(), as_member=True)
     new_member.card_id = qr_value
 
     # Add new member to a database --> Update the database.
@@ -333,7 +223,7 @@ def members_update(updates: MemberUpdateRequest,
                    db: Session = Depends(utils.get_db_members)):
     
     # Get the user which data is about to change
-    member: Member = get_member_by_card_id(db, updates.card_id)
+    member: Member = utils.get_member_by_card_id(db, updates.card_id)
     if member is None:
         raise HTTPException(status_code=400,
                             detail="Such member in database was not found")
@@ -352,7 +242,7 @@ def get_member_info(card_id: str,
                     db: Session = Depends(utils.get_db_members)):
     
     # CheckValidate user who is making a request
-    user: Member = get_member_by_card_id(db, card_id)
+    user: Member = utils.get_member_by_card_id(db, card_id)
     if user is None:
         raise HTTPException(status_code=400,
                             detail="No such token in member database")
@@ -362,7 +252,7 @@ def get_member_info(card_id: str,
                             detail="User has no right get this information")
 
     # Validate member`s card id is correct
-    member: Member = get_member_by_card_id(db, req.card_id)
+    member: Member = utils.get_member_by_card_id(db, req.card_id)
     if member is None:
         raise HTTPException(status_code=400,
                             detail="Member ID was not found")

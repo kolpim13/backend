@@ -1,11 +1,7 @@
 Dear {name} {surname},
 
-Here you can find data to log into your account.
-The QR code can be found in attachment
-
-Login: {login}
-Password: {password}
-
+Welcome to Impakt family!
+In the attachment you can find QR Code that will be used as a pass.
 
 Best Regards,
 Impakt
