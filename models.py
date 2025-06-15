@@ -18,10 +18,10 @@ class Member(Base_Members):
     card_id = Column(String, unique=True)
 
     # Main information about user/member
-    name = Column(String)
-    surname = Column(String)
+    name = Column(String, nullable=True)
+    surname = Column(String, nullable=True)
     email = Column(String, unique=True)
-    phone_number = Column(String)
+    phone_number = Column(String, nullable=True)
     date_of_birth = Column(Date, nullable=True)
 
     # Preferences (To Be Added in the future)
@@ -30,18 +30,19 @@ class Member(Base_Members):
     # ...
 
     # Technical information
-    pass_type = Column(Integer)
     account_type = Column(Integer)
+    pass_type = Column(Integer)
     entrances_left = Column(Integer)
-    expiration_date = Column(Date)
+    expiration_date = Column(Date, nullable=True)
     register_date = Column(Date)
 
     # Store last checkIn time separetly --> will be needed for some operations
     last_check_in = Column(DateTime, nullable=True)
 
     # Data to log in
-    username = Column(String, unique=True)
-    password = Column(String)
+    username = Column(String, nullable=False, unique=True)  # Rename on login
+    password_hash = Column(String, nullable=False)
+    token = Column(String, unique=True, nullable=True)
 
     # Is Card activated - probably will be needed in future.
     activated = Column(Boolean)
@@ -49,14 +50,14 @@ class Member(Base_Members):
 class CheckInEntry(Base_Checkins):
     """ Database to store all entrances log """
 
-    __tablename__ = "entrance_log"
+    __tablename__ = "CheckInHistory"
 
     id = Column(Integer, primary_key=True, unique=True)
 
     # Information about who did scan
-    control_card_id = Column(String)
-    control_name = Column(String)
-    control_surname = Column(String)
+    instructor_card_id = Column(String)    # To be deleted? [or at least masked]
+    instructor_name = Column(String)
+    instructor_surname = Column(String)
     hall = Column(String)
 
     # Information about the member
@@ -66,3 +67,21 @@ class CheckInEntry(Base_Checkins):
 
     # Checkin date & time + [additional information ?]
     date_time = Column(DateTime)
+
+    # Paayment & Pass details
+    # Pass type member posses on the purchase moment (NO / YES / MEDICOVER / etc.)
+    # How many entries left after payment was done
+    # 
+
+
+# class Survey():
+#     """ For future use [Collect data from members through application / site]. 
+#     """
+#     pass
+
+# class EventCalendar():
+#     """ [TBD] To store / modify information about classes schedule.
+#         Additionally: Schedule private lesson in of two halls. 
+#     """
+#     pass
+    

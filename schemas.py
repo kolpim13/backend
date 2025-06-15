@@ -74,21 +74,6 @@ class MemberInfoResp(BaseModel):
     date_of_birth: Optional[date]
     account_type: int
 
-class LogInResponse(BaseModel):
-    """ Data to return when user LogIn
-    """
-
-    card_id: str
-    name: str
-    surname: str
-    email: str
-    phone_number: Optional[str]
-    date_of_birth: Optional[date]
-    account_type: int
-
-    class Config:
-        from_attributes = True
-
 class CheckInLogResponse(BaseModel):
     # Data about person who scanned and where
     control_name: str
@@ -102,6 +87,74 @@ class CheckInLogResponse(BaseModel):
 
     # Checkin date_time
     date_time: datetime
+    class Config:
+        from_attributes = True
+#===========================================================
+
+""" Do not remember what was it
+"""
+
+
+#===========================================================
+
+
+""" LOGIN
+"""
+class Req_LogIn(BaseModel):
+    """ Data to login into account
+    """
+
+    username: str
+    password: str
+
+class Resp_LogIn(BaseModel):
+    """ Data to return when user LogIn
+    """
+
+    card_id: str
+    name: str
+    surname: str
+    email: str
+    account_type: int
+
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
+    token: Optional[str]
+    activated: Optional[bool]
+
+    class Config:
+        from_attributes = True
+    
+class Exception_LogIn(BaseModel):
+    """ [TBD] - tested in the future
+    """
+    detail: str
+
+""" ADD || REGISTER NEW MEMBER
+"""
+
+class Req_AddNewMember(BaseModel):
+    """ Data to return when user LogIn
+    """
+
+    name: str
+    surname: str
+    email: str
+    account_type: int
+
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
+
+    send_welcome_email: Optional[bool] = True  # Decides if welcome email will be sent to a new member
+    send_welcome_mms: Optional[bool] = False   # Decides if welcome MMS will be sent to a new member [TBD]
+
+class Resp_AddNewMember(BaseModel):
+    status: str = "OK"
+    message: str = "New member was created"
+
+    card_id: str
+
+
     class Config:
         from_attributes = True
 #===========================================================

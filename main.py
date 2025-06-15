@@ -1,7 +1,6 @@
 import os
 from typing import Optional
 import dotenv
-import smtplib
 from email.message import EmailMessage
 from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
@@ -13,7 +12,8 @@ from models import Member, CheckInEntry
 from enum import Enum
 from pathlib import Path
 
-from schemas import CheckInLogResponse, CheckInLogFilters, CheckInRequest, LogInResponse, MemberAddRequest, MemberInfoReq, MemberInfoResp, MemberUpdateRequest
+from schemas import CheckInLogResponse, CheckInLogFilters, CheckInRequest, MemberInfoReq, MemberInfoResp, MemberUpdateRequest
+from schemas import Req_LogIn, Resp_LogIn, Req_AddNewMember, Resp_AddNewMember
 
 import project_utils as utils
 from project_utils import PassType, AccountType
@@ -37,67 +37,38 @@ app = FastAPI(title="Dance School Backend")
 # impakt_logo = impakt_logo.resize((75, 100))
 #===========================================================
 
-""" DATA TYPES """
-class MemberIn(BaseModel):
-    """_summary_
-
-    Args:
-        BaseModel (_type_): _description_
+""" FastAPI """
+@app.post("/login/username", 
+          response_model=Resp_LogIn,
+          response_model_exclude_none=True,
+          response_model_exclude_unset=True)
+def post_login_by_username(login_data: Req_LogIn,
+                           db: Session = Depends(utils.get_db_members)):
+    """ Validates if user with such login exists &&
+        If the password provided was correct.
+        Everything is OK --> responces with user data. 
     """
 
-    # CARD ID: Unique value for every account [bounded to a physical card].
-    card_id: str
+    # Validate username
+    member = utils.get_member_by_username(db, login_data.username)
+    if member is None:
+        raise HTTPException(status_code=401,
+                            detail="No user with this username")
+    
+    is_password_correct = utils.verify_hash(login_data.password, member.password_hash)
+    if not is_password_correct:
+        raise HTTPException(status_code=401,
+                            detail="Wrong password")
+    
+    # Return user info
+    return member
 
-    # Main information about user/member
-    name: str
-    surname: str
-    email: str
-    phone_number: str
-    date_of_birth: date
-
-    # Preferences (To Be Added in the future)
-    # How did you know about Impakt
-    # Preferences: leader / follower / both
-    # ...
-
-    # Technical information
-    pass_type: int
-    account_type: int
-    entrances_left: int
-    expiration_date: date
-    register_date: date
-
-    # Store last checkIn time separetly --> will be needed for some operations
-    last_check_in: date
-
-    # Data to log in
-    username: str
-    password: str
-
-    # Is Card activated - probably will be needed in future.
-    activated: bool
-
-class LogIn(BaseModel):
-    """ Data needed to log into user account """
-
-    username: str
-    password: str
-#===========================================================
-
-""" FastAPI """
-@app.post("/members/check_create_root")
-def api_check_create_root(db: Session = Depends(utils.get_db_members)) -> JSONResponse:
-    if utils.check_create_root(db) is True:
-        return JSONResponse(status_code=201, content={"status": "OK", "message": "Default root user created"})
-    return JSONResponse(status_code=200, content={"status": "OK", "message": "Root already exists"})
-
-@app.post("/members/{card_id}/add")
+@app.post("/members/add/{card_id}", response_model=Resp_AddNewMember)
 def members_add(card_id: str,
-               new_member: MemberAddRequest, db: Session = Depends(utils.get_db_members)):
+               req: Req_AddNewMember, 
+               db: Session = Depends(utils.get_db_members)):
     
-    """ Add a new member by administrator """
-    
-    # Get data of the user is requesting for the operation
+    """ Get and validate user who is requesting for new member being add. """
     user: Member = utils.get_member_by_card_id(db, card_id)
 
     # Check if such user exists
@@ -107,13 +78,16 @@ def members_add(card_id: str,
         raise HTTPException(status_code=400,
                             detail="No user with such id was found in database")
 
-    # Check if user possess admin rights
-    if user.account_type != AccountType.ADMIN.value:
+    # Check if has rights to add new members
+    if ((user.account_type != AccountType.ADMIN.value) and
+        (user.account_type != AccountType.INSTRUCTOR.value)):
         raise HTTPException(status_code=401,
-                            detail="The user has to possses admin role to add new members")
+                            detail="The user should be an Instructor or Admin to add new members")
     
+    """ Validate data about new user being provided """
+
     # Check if such email already in use
-    email_exists = db.query(Member).filter(Member.email == new_member.email).first()
+    email_exists = db.query(Member).filter(Member.email == req.email).first()
     if email_exists is not None:
         raise HTTPException(status_code=400,
                             detail="User with such email already registered")
@@ -121,29 +95,56 @@ def members_add(card_id: str,
     # Validate correctness of the data being provided
     # Name, Surname should be present; Unique username; strong password
     # Think about scanning the id card as a method of log in to the app + password.
-    if new_member.account_type is None:
-        new_member.account_type = int(AccountType.MEMBER.value)
+    if user.account_type == AccountType.INSTRUCTOR.value:
+        if req.account_type != AccountType.MEMBER.value:
+            raise HTTPException(status_code=401,
+                            detail="Instructors can add new members only. Instructors and administrators can be added by the administrator only")
 
-    # Generate new QR code value
+    # Construct member: generate new password
+    password: str = None
+    member: Member = None
+    (member, password) = utils.get_member_from_dict(member=req.model_dump())
+
+    # Generate new QR code value --> store it as member`s card ID.
     qr_value: str = utils.generate_qr_code_value(db)
-
-    # Override default values
-    new_member: Member = utils.get_member_from_dict(new_member.model_dump(), as_member=True)
-    new_member.card_id = qr_value
+    member.card_id = qr_value
 
     # Add new member to a database --> Update the database.
-    db.add(new_member)
+    db.add(member)
     db.commit()
-    print("member with card id {} added".format(new_member.card_id))
 
     # Generate QR Code
-    qr_path = utils.generate_qr_code_member(member=new_member)
+    qr_path = utils.generate_qr_code_member(member=member)
 
-    # Send an email with the code
-    utils.send_welcome_email_member(member=new_member, qr_path=qr_path)
+    # Send an email with the QR Code. 
+    if os.getenv("SEND_WELCOME_EMAIL"):
+        if req.send_welcome_email:
+            utils.send_welcome_email_member(member=member, 
+                                            qr_path=qr_path, password=password)
 
     # return from the function
-    return JSONResponse(status_code=201, content={"status": "OK", "message": "New member has been added"})
+    return member
+
+@app.post("/members/update/")
+def members_update(updates: MemberUpdateRequest,
+                   db: Session = Depends(utils.get_db_members)):
+    
+    def validate_data(req: MemberUpdateRequest) -> dict:
+        return {}
+
+    # Get the user which data is about to change
+    member: Member = utils.get_member_by_card_id(db, updates.card_id)
+    if member is None:
+        raise HTTPException(status_code=400,
+                            detail="Such member in database was not found")
+    
+    # Modify every set (Not equake to None) value
+    for key, value in updates.model_dump(exclude_unset=True).items():
+        setattr(member, key, value)
+
+    db.commit()
+    db.refresh(member)
+    return {"status": "success", "updated_member": member.card_id}
 
 @app.post("/members/{card_id}/checkin")
 def members_checkin(card_id: str,
@@ -218,24 +219,6 @@ def members_checkin(card_id: str,
 
     return JSONResponse(status_code=201, content={"status": "OK", "message": "CheckIn Success"})
 
-@app.post("/members/update/")
-def members_update(updates: MemberUpdateRequest,
-                   db: Session = Depends(utils.get_db_members)):
-    
-    # Get the user which data is about to change
-    member: Member = utils.get_member_by_card_id(db, updates.card_id)
-    if member is None:
-        raise HTTPException(status_code=400,
-                            detail="Such member in database was not found")
-    
-    # Modify every set (Not equake to None) value
-    for key, value in updates.model_dump(exclude_unset=True).items():
-        setattr(member, key, value)
-
-    db.commit()
-    db.refresh(member)
-    return {"status": "success", "updated_member": member.card_id}
-
 @app.post("/members/{card_id}/get/member_info", response_model=MemberInfoResp)
 def get_member_info(card_id: str,
                     req: MemberInfoReq,
@@ -257,28 +240,6 @@ def get_member_info(card_id: str,
         raise HTTPException(status_code=400,
                             detail="Member ID was not found")
     
-    return member
-
-@app.post("/login/username", response_model=LogInResponse)
-def login_by_username(login_data: LogIn,
-                      db: Session = Depends(utils.get_db_members)):
-    """ Validates if user with such login exists &&
-        If the password provided was correct.
-        Everything is OK --> responces with user data. 
-    """
-    
-    # Check if user with such username and password exists
-    member = db.query(Member).filter(
-        Member.username == login_data.username,
-        Member.password == login_data.password
-    ).first()
-    
-    # Such username does not exists or password is wrong --> raise corresponding error
-    if member is None:
-        raise HTTPException(status_code=401,
-                            detail="Wrong login or password")
-    
-    # Response with user data
     return member
 
 @app.post("/checkin/log/filtered", response_model=list[CheckInLogResponse])

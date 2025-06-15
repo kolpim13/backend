@@ -11,6 +11,8 @@ import PIL
 import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
+from argon2 import PasswordHasher
+import argon2
 import qrcode
 import qrcode.constants
 import smtplib
@@ -37,6 +39,7 @@ class PassType(Enum):
     NO: int         = 0
     LIMITED: int    = 1
     UNLIMITED: int  = 2
+    # Medicover ?
 
 class AccountType(Enum):
     """ Defines what rights does a member posses. 
@@ -60,17 +63,17 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
     if root is None:
         print("No root user was found in the database --> start of creating a new one.")
 
-        # Generate QR Code value
-        qr_value: str = generate_qr_code_value(db)
-
         # Setup root user value
+        qr_value: str = generate_qr_code_value(db)
+        password = os.getenv("ROOT_PASS")
+        pass_hash = hash_string(password)
         root_values = {
             "card_id": qr_value,
             "name": os.getenv("ROOT_NAME"),
             "surname": os.getenv("ROOT_SURNAME"),
             "email": os.getenv("ROOT_EMAIL"),
             "username": os.getenv("ROOT_LOGIN"),
-            "password": os.getenv("ROOT_PASS"),
+            "password_hash": pass_hash,
             "account_type": AccountType.ADMIN
         }
         root: Member = get_member_from_dict(root_values)
@@ -86,7 +89,8 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
         # Send QR Code via email on self email address
         if os.getenv("SEND_WELCOME_EMAIL_ROOT") == "True":
             send_welcome_email_member(member=root,
-                                       qr_path=qr_code)
+                                       qr_path=qr_code,
+                                       password=password)
             
         print("Root user was created with default values. Change it`s password and card ID as soon as possible!")
         return True
@@ -130,10 +134,10 @@ def get_member_from_dict(member: dict) -> Member:
 
         "name": "Name",
         "surname": "Surname",
-        "email": "mail@gmail.com",
+        "email": None,
         "phone_number": None,
         
-        "date_of_birth": None, #date.min,
+        "date_of_birth": None,
 
         "pass_type": PassType.NO,
         "account_type": AccountType.MEMBER,
@@ -143,8 +147,9 @@ def get_member_from_dict(member: dict) -> Member:
 
         "last_check_in": None,
 
+        "token": None,
         "username": get_random_string(12),
-        "password": get_random_string(12),
+        "password_hash": None,
        
         "activated": False,
     }
@@ -177,12 +182,21 @@ def get_db_checkins():
         db.close()
 #===========================================================
 
-""" ABC """
+""" UTILS """
+def hash_string(string: str) -> str:
+    ph = PasswordHasher()
+    return ph.hash(string)
+
+def verify_hash(string: str, hash: str) -> bool:
+    ph = PasswordHasher()
+    try:
+        ph.verify(hash, string)
+        return True
+    except argon2.exceptions.VerifyMismatchError:
+        return False
+
 def get_random_string(len: int) -> str:
     return ''.join(random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits) for _ in range(len))
-
-def convert_enum_to_int(enum: Enum) -> int:
-    return int(enum.value)
 
 """ QR Codes """
 def generate_qr_code_value(db: Session = Depends(get_db_members)) -> str:
@@ -314,7 +328,8 @@ def send_welcome_email(email_to: str,
         smtp.login(email_from, email_pass)
         smtp.send_message(msg)
 
-def send_welcome_email_member(member: Member, qr_path: Path) -> None:
+def send_welcome_email_member(member: Member, 
+                              qr_path: Path, password: str) -> None:
     # Choose appropriate template based on member role
     match member.account_type:
         case AccountType.ADMIN:
@@ -324,8 +339,9 @@ def send_welcome_email_member(member: Member, qr_path: Path) -> None:
         case AccountType.MEMBER:
             template = Path(PATH_TEMPLATES, "welcome_email_template_Member.txt")
          
+    # Member contain only hass password --> raw pass should be provided explicetely
     send_welcome_email(member.email,
                        member.name, member.surname,
-                       member.username, member.password, 
+                       member.username, password, 
                        qr_path, template)
 #===========================================================
