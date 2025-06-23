@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 from typing import Optional
 import dotenv
@@ -13,9 +14,9 @@ from models import Member, CheckInEntry
 from enum import Enum
 from pathlib import Path
 
-from schemas import CheckInLogResponse, CheckInLogFilters, MemberInfoReq, MemberInfoResp, MemberUpdateRequest, Resp_Statistics_InstructorCheckInAmount
+from schemas import CheckInLogResponse, CheckInLogFilters, MemberInfoReq, MemberInfoResp, MemberUpdateRequest
 from schemas import Req_LogIn, Resp_LogIn, Req_AddNewMember, Resp_AddNewMember, Req_ConfirmMail, Resp_ConfirmMail, Req_Checkin
-from schemas import Req_Statistics_AmountInstructor, Req_Statistics_AmountAllInstructors, Resp_Statistics_AmountInstructor
+from schemas import Req_Statistics_Admin_CheckInsByType_All, Resp_Statistics_Admin_CheckInsByType
 
 import project_utils as utils
 from project_utils import PassType, AccountType
@@ -318,72 +319,61 @@ def post_checkin(card_id: str,
     return JSONResponse(status_code=201, content={"status": "OK", "message": "CheckIn Success"})
 #===========================================================
 
-@app.post("/statistics/all_instructors/entries_amount/{card_id}", response_model=list[Resp_Statistics_InstructorCheckInAmount])
-def post_statistics_all_instructors_entries_amount(req: Req_Statistics_AmountAllInstructors,
+@app.post("/statistics/all_instructors/entries_amount/{card_id}", response_model=list[Resp_Statistics_Admin_CheckInsByType])
+def post_statistics_all_instructors_entries_amount(card_id: str,
+                                                   req: Req_Statistics_Admin_CheckInsByType_All,
+                                                   db_members: Session = Depends(utils.get_db_members),
                                                    db_checkins: Session = Depends(utils.get_db_checkins)):
-    # [TBD]
+    
+    user: Member = utils.get_member_by_card_id(db_members, card_id)
+    if user.account_type != AccountType.ADMIN.value:
+         raise HTTPException(status_code=400,
+                            detail="User has no rights to perform this operation")
+
+    # Get only needed and filtered data from the database
     resp = (
+        # Specify tables
         db_checkins.query(
             CheckInEntry.instructor_name,
             CheckInEntry.instructor_surname,
             CheckInEntry.pass_type,
             func.count().label("count"),
         )
+        # Filter them by data
         .filter(
             CheckInEntry.date_time >= req.date_time_min,
             CheckInEntry.date_time <= req.date_time_max,
         )
+        # Return as (name, surname, pass_type, amount)
         .group_by(CheckInEntry.name, CheckInEntry.instructor_surname, CheckInEntry.pass_type)
         .all()
     )
 
-    result = list()
-    for name, surname, pass_type, amount in resp:
-        result.append(
-            {
-                "name": name,
-                "surname": surname,
-                "pass_type": pass_type,
-                "amount": amount,
-            }
-        )
+    # Get all fields from class definition ==> more robbust in case of some change in the class itself
+    grouped = defaultdict(lambda: {
+        name: field.default
+        for name, field in Resp_Statistics_Admin_CheckInsByType.model_fields.items()
+    })
 
+    # post-sorting of the data
+    for (name, surname, pass_type, amount) in resp:
+        person = grouped[name, surname]
+        person["name"] = name
+        person["surname"] = surname
+        
+        # Calculate each type of the checkin separatelly (grouped by the types of the pass)
+        person["entries_total"] += amount
+        if pass_type <= PassType.UNLIMITED.value:
+            person["entries_pass"] += amount
+        elif pass_type <= PassType.MEDICOVER_1.value:
+            person["entries_medicover"] += amount
+        elif pass_type <= PassType.PZU_1.value:
+            person["entries_pzu"] += amount
+        elif pass_type <= PassType.MULTISPORT_1.value:
+            person["entries_multisport"] += amount
+        elif pass_type <= PassType.OTHER_1.value:
+            person["entries_other"] += amount
+
+    result = list(grouped.values())
     return result
-
-@app.post("/statistics/instructor/entries_amount/{card_id}", response_model=Resp_Statistics_AmountInstructor)
-def post_statistics_instructor_entries_amount(card_id: str,
-                                              req: Req_Statistics_AmountInstructor,
-                                              db_checkins: Session = Depends(utils.get_db_checkins)):
-    
-    """ Returns data about how much etries an instructor did during period of time.
-    """
-    
-    # Check if user trying to obtain data is admin or self
-    user: Member = utils.get_member_by_card_id(card_id)
-    if not user:
-        raise HTTPException(status_code=400,
-                            detail="No such token in member database")
-    
-    if ((user.account_type != AccountType.ADMIN.value) or
-        user.card_id != card_id):
-        raise HTTPException(status_code=400,
-                            detail="User has no rights to access this data.")
-
-    # Filter by concrete instructor
-    result = (
-        db_checkins.query(
-            CheckInEntry.pass_type,
-            func.count().label("count")
-        )
-        .filter(
-            CheckInEntry.instructor_card_id == req.card_id,
-            CheckInEntry.date_time >= req.date_time_min,
-            CheckInEntry.date_time <= req.date_time_max,
-        )
-        .group_by(CheckInEntry.pass_type)
-        .all()
-    )
-
-    # Tempoprarly
-    return {}
 #===========================================================

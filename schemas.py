@@ -97,20 +97,17 @@ class CheckInLogResponse(BaseModel):
 
 #===========================================================
 
-
 """ LOGIN
 """
 class Req_LogIn(BaseModel):
     """ Data to login into account
     """
-
     username: str
     password: str
 
 class Resp_LogIn(BaseModel):
     """ Data to return when user LogIn
     """
-
     card_id: str
     name: str
     surname: str
@@ -132,11 +129,9 @@ class Exception_LogIn(BaseModel):
 
 """ ADD || REGISTER NEW MEMBER
 """
-
 class Req_AddNewMember(BaseModel):
-    """ Data to return when user LogIn
+    """ Data to provide on add member
     """
-
     name: str
     surname: str
     email: str
@@ -147,14 +142,68 @@ class Req_AddNewMember(BaseModel):
 
     send_welcome_email: Optional[bool] = True  # Decides if welcome email will be sent to a new member
     send_welcome_mms: Optional[bool] = False   # Decides if welcome MMS will be sent to a new member [TBD]
-
 class Resp_AddNewMember(BaseModel):
+    """ [Not used at the moment]
+        Response when member was added
+    """
     status: str = "OK"
     message: str = "New member was created"
 
     card_id: str
-
-
+    
     class Config:
         from_attributes = True
+
+class Req_ConfirmMail(BaseModel):
+    pass
+class Resp_ConfirmMail(BaseModel):
+    pass
+    class Config:
+        from_attributes = True
+
+#===========================================================
+
+""" CHECKIN
+"""
+class Req_Checkin(BaseModel):
+    """ Data to register checkin
+
+    card_id - member`s identification
+    hall    - place where class was
+    external_payment: was member pay for this class.
+    pass_type - what type of pass was used to enter the class
+        None -> internall (Previousely bought) pass was used
+        othervise -> some external payment system was used. 
+    """
+
+    card_id: str
+    hall: Optional[str] = "Impakt"
+    external_payment: Optional[bool] = False
+    pass_type: Optional[int] = None
+#===========================================================
+
+""" STATISTICS
+"""
+class Req_Statistics_Admin_CheckInsByType_All(BaseModel):
+    """ Used to request more-or-less detailed data about all checkins made by
+        all instructors 
+    """
+    date_time_min: datetime
+    date_time_max: datetime
+
+class Resp_Statistics_Admin_CheckInsByType(BaseModel):
+    """ Used to represent sorted response of how many entries did an instructor
+        in a period of time. 
+    """
+    name: str = ""
+    surname: str = ""
+    entries_pass: int = 0
+    entries_pzu: int = 0
+    entries_medicover: int = 0
+    entries_multisport: int = 0
+    entries_other: int = 0
+    entries_total: int = 0
+    
+    class Config:
+            from_attributes = True
 #===========================================================
