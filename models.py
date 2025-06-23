@@ -23,6 +23,7 @@ class Member(Base_Members):
     email = Column(String, unique=True)
     phone_number = Column(String, nullable=True)
     date_of_birth = Column(Date, nullable=True)
+    image_path = Column(String, nullable=True)
 
     # Preferences (To Be Added in the future)
     # How did you know about Impakt
@@ -58,7 +59,7 @@ class CheckInEntry(Base_Checkins):
     instructor_card_id = Column(String)    # To be deleted? [or at least masked]
     instructor_name = Column(String)
     instructor_surname = Column(String)
-    hall = Column(String)
+    hall = Column(String, nullable=True)
 
     # Information about the member
     card_id = Column(String)
@@ -69,6 +70,8 @@ class CheckInEntry(Base_Checkins):
     date_time = Column(DateTime)
 
     # Paayment & Pass details
+    pass_type = Column(Integer)
+    entrances_left = Column(Integer)
     # Pass type member posses on the purchase moment (NO / YES / MEDICOVER / etc.)
     # How many entries left after payment was done
     # 

@@ -2,6 +2,7 @@
 import os
 import random
 import string
+import inspect
 from pathlib import Path
 from datetime import date, timedelta
 from enum import Enum
@@ -34,12 +35,24 @@ PATH_QR_CODES = Path(PATH_BASE, "qr_codes")
 """ Datatypes to be used as databases fields """
 class PassType(Enum):
     """ Pass type of a member.
+        Regular pass    - [1; 20],
+        Medicover       - [21; 40],
+        PZU             - [41; 60],
+        MULTISPORT      - [61; 80],
+        RESERVED        - [81; 100],
+        OTHER SYSTEMS   - [101, xxx]
     """
 
-    NO: int         = 0
-    LIMITED: int    = 1
-    UNLIMITED: int  = 2
-    # Medicover ?
+    NO: int             = 0
+    LIMITED_1: int      = 1
+    LIMITED_4: int      = 4
+    LIMITED_8: int      = 8
+    LIMITED_12: int     = 12
+    UNLIMITED: int      = 20
+    MEDICOVER_1: int    = 21
+    PZU_1: int          = 41
+    MULTISPORT_1: int   = 61
+    OTHER_1: int        = 101
 
 class AccountType(Enum):
     """ Defines what rights does a member posses. 
@@ -74,7 +87,8 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
             "email": os.getenv("ROOT_EMAIL"),
             "username": os.getenv("ROOT_LOGIN"),
             "password_hash": pass_hash,
-            "account_type": AccountType.ADMIN
+            "account_type": AccountType.ADMIN,
+            "activated": True,   # First user activated by default
         }
         root: Member = get_member_from_dict(root_values)
 
@@ -114,14 +128,14 @@ def dict_to_Member(member_dict: dict) -> Member:
     def safe_enum_value_convert(val):
         return val.value if isinstance(val, Enum) else val
     
-    # Probably will be needed in future
-    member = Member(
-        **{**member_dict,
-            "account_type": safe_enum_value_convert(member_dict["account_type"]),
-            "pass_type": safe_enum_value_convert(member_dict["pass_type"]),
-        }
-    )
-    return member
+    # Clean data before pass them to a Member instance
+    cleaned_data = {
+        **filter_kwargs_for_class(Member, member_dict),
+        "account_type": safe_enum_value_convert(member_dict["account_type"]),
+        "pass_type": safe_enum_value_convert(member_dict["pass_type"]),
+    }
+
+    return Member(**cleaned_data)
 
 def get_member_from_dict(member: dict) -> Member:
     """ Function is used to construct member from a req schema.
@@ -136,13 +150,13 @@ def get_member_from_dict(member: dict) -> Member:
         "surname": "Surname",
         "email": None,
         "phone_number": None,
-        
         "date_of_birth": None,
+        "image_path": None, 
 
         "pass_type": PassType.NO,
         "account_type": AccountType.MEMBER,
         "entrances_left": 0,
-        "expiration_date": None, #date.today() + timedelta(weeks=5),
+        "expiration_date": date.today() - timedelta(days=1),
         "register_date": date.today(),
 
         "last_check_in": None,
@@ -151,7 +165,7 @@ def get_member_from_dict(member: dict) -> Member:
         "username": get_random_string(12),
         "password_hash": None,
        
-        "activated": False,
+        "activated": False, # Always needed to be confirmed
     }
     member = {**default, **member}
     member = dict_to_Member(member) # Probably not needed
@@ -197,6 +211,12 @@ def verify_hash(string: str, hash: str) -> bool:
 
 def get_random_string(len: int) -> str:
     return ''.join(random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits) for _ in range(len))
+
+def filter_kwargs_for_class(cls, data: dict):
+    """ Takes a dictionary and leaves only key and respective keys related to a provided class 
+    """
+    valid_keys = cls.__table__.columns.keys()
+    return {k: v for k, v in data.items() if k in valid_keys and k != 'self'}
 
 """ QR Codes """
 def generate_qr_code_value(db: Session = Depends(get_db_members)) -> str:
@@ -331,12 +351,14 @@ def send_welcome_email(email_to: str,
 def send_welcome_email_member(member: Member, 
                               qr_path: Path, password: str) -> None:
     # Choose appropriate template based on member role
-    match member.account_type:
+    match AccountType(member.account_type):
         case AccountType.ADMIN:
             template = Path(PATH_TEMPLATES, "welcome_email_template_Admin.txt")
         case AccountType.INSTRUCTOR:
             template = Path(PATH_TEMPLATES, "welcome_email_template_Instructor.txt")
         case AccountType.MEMBER:
+            template = Path(PATH_TEMPLATES, "welcome_email_template_Member.txt")
+        case _:
             template = Path(PATH_TEMPLATES, "welcome_email_template_Member.txt")
          
     # Member contain only hass password --> raw pass should be provided explicetely

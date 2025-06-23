@@ -6,14 +6,16 @@ from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, or_
 from datetime import date, datetime, timedelta
 
 from models import Member, CheckInEntry
 from enum import Enum
 from pathlib import Path
 
-from schemas import CheckInLogResponse, CheckInLogFilters, CheckInRequest, MemberInfoReq, MemberInfoResp, MemberUpdateRequest
-from schemas import Req_LogIn, Resp_LogIn, Req_AddNewMember, Resp_AddNewMember
+from schemas import CheckInLogResponse, CheckInLogFilters, MemberInfoReq, MemberInfoResp, MemberUpdateRequest, Resp_Statistics_InstructorCheckInAmount
+from schemas import Req_LogIn, Resp_LogIn, Req_AddNewMember, Resp_AddNewMember, Req_ConfirmMail, Resp_ConfirmMail, Req_Checkin
+from schemas import Req_Statistics_AmountInstructor, Req_Statistics_AmountAllInstructors, Resp_Statistics_AmountInstructor
 
 import project_utils as utils
 from project_utils import PassType, AccountType
@@ -64,33 +66,27 @@ def post_login_by_username(login_data: Req_LogIn,
     return member
 
 @app.post("/members/add/{card_id}", response_model=Resp_AddNewMember)
-def members_add(card_id: str,
+def post_members_add(card_id: str,
                req: Req_AddNewMember, 
                db: Session = Depends(utils.get_db_members)):
     
-    """ Get and validate user who is requesting for new member being add. """
+    # Check if user exists
     user: Member = utils.get_member_by_card_id(db, card_id)
-
-    # Check if such user exists
     if user is None:
-        # User not exists --> raise an error
-        print("No user with such id was found in database")
         raise HTTPException(status_code=400,
                             detail="No user with such id was found in database")
 
-    # Check if has rights to add new members
+    # Check if user has rights to add new members
     if ((user.account_type != AccountType.ADMIN.value) and
         (user.account_type != AccountType.INSTRUCTOR.value)):
         raise HTTPException(status_code=401,
                             detail="The user should be an Instructor or Admin to add new members")
     
-    """ Validate data about new user being provided """
-
-    # Check if such email already in use
+    # Check if member`s` email already in use
     email_exists = db.query(Member).filter(Member.email == req.email).first()
     if email_exists is not None:
         raise HTTPException(status_code=400,
-                            detail="User with such email already registered")
+                            detail="Member with given email already registered")
 
     # Validate correctness of the data being provided
     # Name, Surname should be present; Unique username; strong password
@@ -100,10 +96,12 @@ def members_add(card_id: str,
             raise HTTPException(status_code=401,
                             detail="Instructors can add new members only. Instructors and administrators can be added by the administrator only")
 
-    # Construct member: generate new password
-    password: str = None
-    member: Member = None
-    (member, password) = utils.get_member_from_dict(member=req.model_dump())
+    # Construct member: generate new password --> write over default values
+    password: str = utils.get_random_string(12)
+    pass_hash = utils.hash_string(password)
+    member_req = req.model_dump()
+    member_req["password_hash"] = pass_hash
+    member: Member = utils.get_member_from_dict(member=member_req)
 
     # Generate new QR code value --> store it as member`s card ID.
     qr_value: str = utils.generate_qr_code_value(db)
@@ -125,6 +123,14 @@ def members_add(card_id: str,
     # return from the function
     return member
 
+@app.post("/members/confirm_mail", response_model=Resp_ConfirmMail)
+def post_members_confirm(req: Req_ConfirmMail,
+                         db: Session = Depends(utils.get_db_members)):
+
+    """ [TBD] Confirmation that provided email is valid.
+    """
+    return None
+
 @app.post("/members/update/")
 def members_update(updates: MemberUpdateRequest,
                    db: Session = Depends(utils.get_db_members)):
@@ -145,79 +151,6 @@ def members_update(updates: MemberUpdateRequest,
     db.commit()
     db.refresh(member)
     return {"status": "success", "updated_member": member.card_id}
-
-@app.post("/members/{card_id}/checkin")
-def members_checkin(card_id: str,
-                    checkin: CheckInRequest,
-                    db_members: Session = Depends(utils.get_db_members),
-                    db_checkin: Session = Depends(utils.get_db_checkins)):
-    """ Add new check into the corresponding database
-
-    Args:
-        card_id (str): Card ID of the person who performing check in
-        checkin (CheckInRequest): All the data needed to perform a checkin
-        db_members (Session, optional): Main database: all members provided. Defaults to Depends(utils.get_db_members).
-        db_checkin (Session, optional): CheckIn database: serves to store checkin history. Defaults to Depends(utils.get_db_checkins).
-    """
-    
-    # Get data about the person who scans
-    member_who_scans = db_members.query(Member).filter(Member.card_id == card_id).first()
-    if not member_who_scans:
-        raise HTTPException(status_code=400,
-                            detail="No Admin or Instructor with such id was found in database")
-    
-    print(member_who_scans.name, member_who_scans.account_type)
-    # Check if person have rights to checkin someone
-    if ((AccountType(member_who_scans.account_type) != AccountType.ADMIN) and
-        (AccountType(member_who_scans.account_type) != AccountType.INSTRUCTOR)):
-        raise HTTPException(status_code=401,
-                            detail="The user has to possses admin or instructor role to checkIn members")
-    
-    # Get data about the member being scanned
-    member_being_scanned = db_members.query(Member).filter(Member.card_id == checkin.card_id).first()
-    if not member_who_scans:
-        raise HTTPException(status_code=400,
-                            detail="No member with such id was found in database")
-    
-    """ Validate person which is being scanned """
-    # Payment through external tool --> scip some validations
-    if ((checkin.payment_by_externa_tool is False) or
-        (member_being_scanned.account_type == AccountType.ADMIN)):
-        # Date of the pass is finished
-        if member_being_scanned.expiration_date > date.today():
-            raise HTTPException(status_code=403,
-                                detail="Pass date is expired")
-        
-        # No entrances left
-        if member_being_scanned.entrances_left <= 0:
-            raise HTTPException(status_code=403,
-                                detail="No more entrances left")
-        
-    """ Update both databases: main and checkin """
-    scan_datetime = datetime.now()
-
-    # Assemble data to create checkin entry --> commit it to the database
-    checkin_entry_data = {
-        "control_card_id": member_who_scans.card_id,
-        "control_name": member_who_scans.name,
-        "control_surname": member_who_scans.surname,
-        "hall": checkin.hall,
-        "card_id": member_being_scanned.card_id,
-        "name": member_being_scanned.name,
-        "surname": member_being_scanned.surname,
-        "date_time": scan_datetime,
-    }
-    checkin_entry: CheckInEntry = CheckInEntry(**checkin_entry_data)
-    db_checkin.add(checkin_entry)
-    db_checkin.commit()
-
-    # Update information about the member --> Store it
-    member_being_scanned.entrances_left = member_being_scanned.entrances_left - 1
-    member_being_scanned.last_check_in = scan_datetime
-    db_members.commit()
-    db_members.refresh(member_being_scanned)
-
-    return JSONResponse(status_code=201, content={"status": "OK", "message": "CheckIn Success"})
 
 @app.post("/members/{card_id}/get/member_info", response_model=MemberInfoResp)
 def get_member_info(card_id: str,
@@ -306,4 +239,151 @@ def get_checkin_log_filtered(filters: CheckInLogFilters,
     # Get data from the database [ordered by the date time && with limit]
     data = query.order_by(CheckInEntry.date_time).limit(filters.limit).all()
     return data
+#===========================================================
+
+@app.post("/checkin/{card_id}")
+def post_checkin(card_id: str,
+                 req: Req_Checkin,
+                 db_members: Session = Depends(utils.get_db_members),
+                 db_checkin: Session = Depends(utils.get_db_checkins)):
+    """ Add new check into the corresponding database
+
+    Args:
+        card_id (str): Card ID of the person who performing check in
+        req (CheckInRequest): All the data needed to perform a checkin
+        db_members (Session, optional): Main database: all members provided. Defaults to Depends(utils.get_db_members).
+        db_checkin (Session, optional): CheckIn database: serves to store checkin history. Defaults to Depends(utils.get_db_checkins).
+    """
+    
+    # Get user who scanned --> check his priviladges
+    user: Member = utils.get_member_by_card_id(db_members, card_id)
+    if not user:
+        raise HTTPException(status_code=400,
+                            detail="No Admin or Instructor with such id was found in database")
+    
+    if ((AccountType(user.account_type) != AccountType.ADMIN) and
+        (AccountType(user.account_type) != AccountType.INSTRUCTOR)):
+        raise HTTPException(status_code=401,
+                            detail="The user has to possses admin or instructor role to checkIn members")
+    
+    # Get data about the member being scanned
+    member: Member = utils.get_member_by_card_id(db_members, req.card_id)
+    if not member:
+        raise HTTPException(status_code=400,
+                            detail="No member with such id was found in the database")
+    
+    """ Validate member being scanned """
+    # If member used external payment or he is an instructor --> no check needed
+    if ((req.external_payment is False) and
+        (member.account_type == AccountType.MEMBER.value)):
+
+        # Date of the pass is finished
+        if member.expiration_date > date.today():
+            raise HTTPException(status_code=403,
+                                detail="Pass date is expired")
+        
+        # No entrances left
+        if member.entrances_left <= 0:
+            raise HTTPException(status_code=403,
+                                detail="No more entrances left")
+        
+    """ Update both databases: main and checkin """
+    # Assemble data to update checkin table
+    scan_datetime = datetime.now()
+    pass_type = req.pass_type if req.external_payment is True else member.pass_type
+    entrances_left = member.entrances_left - 1
+    
+    checkin_entry_data = {
+        "instructor_card_id": user.card_id,
+        "instructor_name": user.name,
+        "instructor_surname": user.surname,
+        "hall": req.hall,
+        "card_id": member.card_id,
+        "name": member.name,
+        "surname": member.surname,
+        "date_time": scan_datetime,
+        "pass_type": pass_type,
+        "entrances_left": entrances_left,
+    }
+    checkin_entry: CheckInEntry = CheckInEntry(**checkin_entry_data)
+    db_checkin.add(checkin_entry)
+    db_checkin.commit()
+
+    # Update information about the member --> Store it
+    member.entrances_left = entrances_left
+    member.last_check_in = scan_datetime
+    db_members.commit()
+    db_members.refresh(member)
+
+    return JSONResponse(status_code=201, content={"status": "OK", "message": "CheckIn Success"})
+#===========================================================
+
+@app.post("/statistics/all_instructors/entries_amount/{card_id}", response_model=list[Resp_Statistics_InstructorCheckInAmount])
+def post_statistics_all_instructors_entries_amount(req: Req_Statistics_AmountAllInstructors,
+                                                   db_checkins: Session = Depends(utils.get_db_checkins)):
+    # [TBD]
+    resp = (
+        db_checkins.query(
+            CheckInEntry.instructor_name,
+            CheckInEntry.instructor_surname,
+            CheckInEntry.pass_type,
+            func.count().label("count"),
+        )
+        .filter(
+            CheckInEntry.date_time >= req.date_time_min,
+            CheckInEntry.date_time <= req.date_time_max,
+        )
+        .group_by(CheckInEntry.name, CheckInEntry.instructor_surname, CheckInEntry.pass_type)
+        .all()
+    )
+
+    result = list()
+    for name, surname, pass_type, amount in resp:
+        result.append(
+            {
+                "name": name,
+                "surname": surname,
+                "pass_type": pass_type,
+                "amount": amount,
+            }
+        )
+
+    return result
+
+@app.post("/statistics/instructor/entries_amount/{card_id}", response_model=Resp_Statistics_AmountInstructor)
+def post_statistics_instructor_entries_amount(card_id: str,
+                                              req: Req_Statistics_AmountInstructor,
+                                              db_checkins: Session = Depends(utils.get_db_checkins)):
+    
+    """ Returns data about how much etries an instructor did during period of time.
+    """
+    
+    # Check if user trying to obtain data is admin or self
+    user: Member = utils.get_member_by_card_id(card_id)
+    if not user:
+        raise HTTPException(status_code=400,
+                            detail="No such token in member database")
+    
+    if ((user.account_type != AccountType.ADMIN.value) or
+        user.card_id != card_id):
+        raise HTTPException(status_code=400,
+                            detail="User has no rights to access this data.")
+
+    # Filter by concrete instructor
+    result = (
+        db_checkins.query(
+            CheckInEntry.pass_type,
+            func.count().label("count")
+        )
+        .filter(
+            CheckInEntry.instructor_card_id == req.card_id,
+            CheckInEntry.date_time >= req.date_time_min,
+            CheckInEntry.date_time <= req.date_time_max,
+        )
+        .group_by(CheckInEntry.pass_type)
+        .all()
+    )
+
+    # Tempoprarly
+    return {}
 #===========================================================
