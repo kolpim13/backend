@@ -18,8 +18,8 @@ class Member(Base_Members):
     card_id = Column(String, unique=True)
 
     # Main information about user/member
-    name = Column(String, nullable=True)
-    surname = Column(String, nullable=True)
+    name = Column(String)
+    surname = Column(String)
     email = Column(String, unique=True)
     phone_number = Column(String, nullable=True)
     date_of_birth = Column(Date, nullable=True)

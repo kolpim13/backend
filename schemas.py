@@ -3,11 +3,6 @@ from datetime import date, datetime
 from typing import Optional
 #===========================================================
 
-""" REQUEST SCHEMES """
-
-class MemberInfoReq(BaseModel):
-    card_id: str
-
 class CheckInRequest(BaseModel):
     """ Data needed to perform a checkin operation.
     """
@@ -62,18 +57,6 @@ class MemberAddRequest(BaseModel):
 
 """ RESPONSE SCHEMES """
 
-class MemberInfoResp(BaseModel):
-    """ Information about the member returned on request
-    """
-
-    card_id: str
-    name: str
-    surname: str
-    email: str
-    phone_number: Optional[str]
-    date_of_birth: Optional[date]
-    account_type: int
-
 class CheckInLogResponse(BaseModel):
     # Data about person who scanned and where
     control_name: str
@@ -126,6 +109,7 @@ class Exception_LogIn(BaseModel):
     """ [TBD] - tested in the future
     """
     detail: str
+#===========================================================
 
 """ ADD || REGISTER NEW MEMBER
 """
@@ -161,6 +145,42 @@ class Resp_ConfirmMail(BaseModel):
     class Config:
         from_attributes = True
 
+#===========================================================
+
+""" MEMBER: INFO, UPDATE, ETC
+"""
+class Resp_MemberInfo(BaseModel):
+    """ Represents data about the user requested from the data base
+    """
+    name: str
+    surname: str
+    email: str
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
+
+    account_type: int
+    pass_type: int
+    entrances_left: int
+    expiration_date: Optional[date]
+
+    last_check_in: Optional[datetime]
+
+    class Config:
+            from_attributes = True
+
+class Req_Member_UpdatePass(BaseModel):
+    """ Allows to update information about member`s pass  
+    """
+    card_id: str
+    pass_type: int
+
+class Resp_Member_UpdatePass(BaseModel):
+    pass_type: int
+    entrances_left: int
+    expiration_date: date
+    
+    class Config:
+            from_attributes = True
 #===========================================================
 
 """ CHECKIN

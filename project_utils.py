@@ -19,7 +19,7 @@ import qrcode.constants
 import smtplib
 from email.message import EmailMessage
 from sqlalchemy.orm import Session
-from fastapi import Depends
+from fastapi import HTTPException, Depends 
 
 # User
 from models import Member, CheckInEntry
@@ -175,7 +175,11 @@ def get_member_from_dict(member: dict) -> Member:
     return member
 
 def get_member_by_card_id(db: Session, card_id: str) -> Member:
-    return db.query(Member).filter(Member.card_id == card_id).first()
+    member: Member = db.query(Member).filter(Member.card_id == card_id).first()
+    if not member:
+        raise HTTPException(status_code=400,
+                            detail="No mmeber with such id was found in DB")
+    return member
 
 def get_member_by_username(db: Session, username: str) -> Member:
     return db.query(Member).filter(Member.username == username).first()
