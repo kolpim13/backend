@@ -14,7 +14,7 @@ from models import Member, CheckInEntry
 from enum import Enum
 from pathlib import Path
 
-from schemas import CheckInLogResponse, CheckInLogFilters, MemberInfoReq, MemberInfoResp, MemberUpdateRequest
+from schemas import CheckInLogResponse, CheckInLogFilters, MemberUpdateRequest, Req_Member_UpdatePass, Resp_Member_UpdatePass, Resp_MemberInfo
 from schemas import Req_LogIn, Resp_LogIn, Req_AddNewMember, Resp_AddNewMember, Req_ConfirmMail, Resp_ConfirmMail, Req_Checkin
 from schemas import Req_Statistics_Admin_CheckInsByType_All, Resp_Statistics_Admin_CheckInsByType
 
@@ -38,6 +38,15 @@ app = FastAPI(title="Dance School Backend")
 # Load Impakt logo once on the beginning
 # impakt_logo = PIL.Image.open("impakt_logo.jpg")
 # impakt_logo = impakt_logo.resize((75, 100))
+#===========================================================
+
+def member_has_valid_pass(member: Member) -> bool:
+    if (PassType(member.pass_type) is PassType.NO or
+        member.expiration_date < date.today() or
+        member.entrances_left <= 0):
+        return False
+    
+    return True
 #===========================================================
 
 """ FastAPI """
@@ -153,29 +162,6 @@ def members_update(updates: MemberUpdateRequest,
     db.refresh(member)
     return {"status": "success", "updated_member": member.card_id}
 
-@app.post("/members/{card_id}/get/member_info", response_model=MemberInfoResp)
-def get_member_info(card_id: str,
-                    req: MemberInfoReq,
-                    db: Session = Depends(utils.get_db_members)):
-    
-    # CheckValidate user who is making a request
-    user: Member = utils.get_member_by_card_id(db, card_id)
-    if user is None:
-        raise HTTPException(status_code=400,
-                            detail="No such token in member database")
-    
-    if AccountType(user.account_type) not in [AccountType.ADMIN, AccountType.INSTRUCTOR]:
-        raise HTTPException(status_code=400,
-                            detail="User has no right get this information")
-
-    # Validate member`s card id is correct
-    member: Member = utils.get_member_by_card_id(db, req.card_id)
-    if member is None:
-        raise HTTPException(status_code=400,
-                            detail="Member ID was not found")
-    
-    return member
-
 @app.post("/checkin/log/filtered", response_model=list[CheckInLogResponse])
 def get_checkin_log_filtered(filters: CheckInLogFilters,
                              db: Session = Depends(utils.get_db_checkins)):
@@ -240,6 +226,68 @@ def get_checkin_log_filtered(filters: CheckInLogFilters,
     # Get data from the database [ordered by the date time && with limit]
     data = query.order_by(CheckInEntry.date_time).limit(filters.limit).all()
     return data
+
+@app.post("/membres/update/pass/{card_id}", response_model=Resp_Member_UpdatePass)
+def post_members_update_pass(card_id: str,
+                             req: Req_Member_UpdatePass,
+                             db: Session = Depends(utils.get_db_members)):
+    """ Allows to update data about member`s pass type
+    """
+    user: Member = utils.get_member_by_card_id(db, card_id)
+    member: Member = utils.get_member_by_card_id(db, req.card_id)
+
+    # Check who is trying to update member`s pass
+    if AccountType(user.account_type) not in (AccountType.ADMIN, AccountType.INSTRUCTOR):
+         raise HTTPException(status_code=400,
+                            detail="User has no rights to perform this operation")
+
+    # Check if user already has valid pass
+    if member_has_valid_pass(member) is True:
+        raise HTTPException(status_code=400,
+                            detail="User already has valid pass")
+    
+    # Update Pass details
+    member.pass_type = req.pass_type
+    member.entrances_left = req.pass_type # it is an integer though
+    member.expiration_date = date.today() + timedelta(weeks=5)
+
+    # Update db
+    db.commit()
+    db.refresh(member)
+
+    # return Success operation code
+    return member
+#===========================================================
+
+@app.get("/members/get/info/{user_id}/{member_id}", response_model=Resp_MemberInfo)
+def get_member_info(user_id: str,
+                    member_id: str,
+                    db: Session = Depends(utils.get_db_members)):
+    
+    # CheckValidate user who is making a request
+    user: Member = utils.get_member_by_card_id(db, user_id)
+    if user is None:
+        raise HTTPException(status_code=400,
+                            detail="No such token in member database")
+    
+    # Validate member`s card id is correct
+    member: Member = utils.get_member_by_card_id(db, member_id)
+    if member is None:
+        raise HTTPException(status_code=400,
+                            detail="Member ID was not found")
+    
+    # Validate if user can ask about another user based on the role
+    if AccountType(user.account_type) not in [AccountType.ADMIN, AccountType.INSTRUCTOR]:
+        raise HTTPException(status_code=401,
+                            detail="User has no right get this information")
+    
+    if AccountType(user.account_type) is AccountType.INSTRUCTOR:
+        if ((AccountType(member.account_type) is not AccountType.MEMBER) and
+            (user.card_id != member.card_id)):
+            raise HTTPException(status_code=401,
+                            detail="User has no right get this information")
+    
+    return member
 #===========================================================
 
 @app.post("/checkin/{card_id}")
@@ -376,4 +424,8 @@ def post_statistics_all_instructors_entries_amount(card_id: str,
 
     result = list(grouped.values())
     return result
+
+@app.get("statistics/instructor/self_checkins/today/{card_id}")
+def get_statistics_instructor_self_checkins_today(card_id: str):
+    pass
 #===========================================================
