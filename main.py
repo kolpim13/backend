@@ -2,7 +2,7 @@ from collections import defaultdict
 import os
 from typing import Optional
 import dotenv
-from email.message import EmailMessage
+
 from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -11,15 +11,15 @@ from sqlalchemy import and_, func, or_
 from datetime import date, datetime, timedelta
 
 from models import Member, CheckInEntry
-from enum import Enum
-from pathlib import Path
 
 from schemas import CheckInLogResponse, CheckInLogFilters, MemberUpdateRequest, Req_Member_UpdatePass, Resp_Member_UpdatePass, Resp_MemberInfo
 from schemas import Req_LogIn, Resp_LogIn, Req_AddNewMember, Resp_AddNewMember, Req_ConfirmMail, Resp_ConfirmMail, Req_Checkin
 from schemas import Req_Statistics_Admin_CheckInsByType_All, Resp_Statistics_Admin_CheckInsByType
 
 import project_utils as utils
-from project_utils import PassType, AccountType
+from project_utils import AccountType
+
+from endpoints_passes import router as router_passes
 #===========================================================
 
 """ START THE APPLICATION """
@@ -32,8 +32,9 @@ utils.check_create_paths()
 utils.databases_init_tables()
 utils.check_create_root()
 
-# FastAPI application to run
+# FastAPI application to run --> add all routers
 app = FastAPI(title="Dance School Backend")
+app.include_router(router_passes)
 
 # Load Impakt logo once on the beginning
 # impakt_logo = PIL.Image.open("impakt_logo.jpg")
@@ -41,11 +42,6 @@ app = FastAPI(title="Dance School Backend")
 #===========================================================
 
 def member_has_valid_pass(member: Member) -> bool:
-    if (PassType(member.pass_type) is PassType.NO or
-        member.expiration_date < date.today() or
-        member.entrances_left <= 0):
-        return False
-    
     return True
 #===========================================================
 
@@ -245,11 +241,6 @@ def post_members_update_pass(card_id: str,
     if member_has_valid_pass(member) is True:
         raise HTTPException(status_code=400,
                             detail="User already has valid pass")
-    
-    # Update Pass details
-    member.pass_type = req.pass_type
-    member.entrances_left = req.pass_type # it is an integer though
-    member.expiration_date = date.today() + timedelta(weeks=5)
 
     # Update db
     db.commit()
@@ -339,7 +330,6 @@ def post_checkin(card_id: str,
     """ Update both databases: main and checkin """
     # Assemble data to update checkin table
     scan_datetime = datetime.now()
-    pass_type = req.pass_type if req.external_payment is True else member.pass_type
     entrances_left = member.entrances_left - 1
     
     checkin_entry_data = {
@@ -351,7 +341,6 @@ def post_checkin(card_id: str,
         "name": member.name,
         "surname": member.surname,
         "date_time": scan_datetime,
-        "pass_type": pass_type,
         "entrances_left": entrances_left,
     }
     checkin_entry: CheckInEntry = CheckInEntry(**checkin_entry_data)
@@ -404,23 +393,13 @@ def post_statistics_all_instructors_entries_amount(card_id: str,
     })
 
     # post-sorting of the data
-    for (name, surname, pass_type, amount) in resp:
+    for (name, surname, amount) in resp:
         person = grouped[name, surname]
         person["name"] = name
         person["surname"] = surname
         
         # Calculate each type of the checkin separatelly (grouped by the types of the pass)
         person["entries_total"] += amount
-        if pass_type <= PassType.UNLIMITED.value:
-            person["entries_pass"] += amount
-        elif pass_type <= PassType.MEDICOVER_1.value:
-            person["entries_medicover"] += amount
-        elif pass_type <= PassType.PZU_1.value:
-            person["entries_pzu"] += amount
-        elif pass_type <= PassType.MULTISPORT_1.value:
-            person["entries_multisport"] += amount
-        elif pass_type <= PassType.OTHER_1.value:
-            person["entries_other"] += amount
 
     result = list(grouped.values())
     return result

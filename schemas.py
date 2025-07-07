@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from datetime import date, datetime
 from typing import Optional
+from decimal import Decimal
 #===========================================================
 
 class CheckInRequest(BaseModel):
@@ -111,6 +112,34 @@ class Exception_LogIn(BaseModel):
     detail: str
 #===========================================================
 
+""" EXTERNAL PROVIDERS
+    (External payment methods)
+"""
+class Req_Create_ExternalProviders(BaseModel):
+    name: str
+    description: Optional[str]
+    active: bool
+    is_partial_payment: bool
+    partial_payment: Optional[Decimal]
+
+class Resp_Instance_ExternalProviders(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    active: bool
+    is_partial_payment: bool
+    partial_payment: Optional[Decimal]
+
+class Req_Update_ExternalProviders(BaseModel):
+    id: int
+    name: Optional[str]
+    description: Optional[str]
+    active: Optional[bool]
+    is_partial_payment: bool
+    partial_payment: Optional[Decimal]
+
+#===========================================================
+
 """ ADD || REGISTER NEW MEMBER
 """
 class Req_AddNewMember(BaseModel):
@@ -166,7 +195,7 @@ class Resp_MemberInfo(BaseModel):
     last_check_in: Optional[datetime]
 
     class Config:
-            from_attributes = True
+        from_attributes = True
 
 class Req_Member_UpdatePass(BaseModel):
     """ Allows to update information about member`s pass  
@@ -178,7 +207,7 @@ class Resp_Member_UpdatePass(BaseModel):
     pass_type: int
     entrances_left: int
     expiration_date: date
-    
+
     class Config:
             from_attributes = True
 #===========================================================

@@ -33,27 +33,6 @@ PATH_QR_CODES = Path(PATH_BASE, "qr_codes")
 #===========================================================
 
 """ Datatypes to be used as databases fields """
-class PassType(Enum):
-    """ Pass type of a member.
-        Regular pass    - [1; 20],
-        Medicover       - [21; 40],
-        PZU             - [41; 60],
-        MULTISPORT      - [61; 80],
-        RESERVED        - [81; 100],
-        OTHER SYSTEMS   - [101, xxx]
-    """
-
-    NO: int             = 0
-    LIMITED_1: int      = 1
-    LIMITED_4: int      = 4
-    LIMITED_8: int      = 8
-    LIMITED_12: int     = 12
-    UNLIMITED: int      = 20
-    MEDICOVER_1: int    = 21
-    PZU_1: int          = 41
-    MULTISPORT_1: int   = 61
-    OTHER_1: int        = 101
-
 class AccountType(Enum):
     """ Defines what rights does a member posses. 
     """
@@ -132,7 +111,6 @@ def dict_to_Member(member_dict: dict) -> Member:
     cleaned_data = {
         **filter_kwargs_for_class(Member, member_dict),
         "account_type": safe_enum_value_convert(member_dict["account_type"]),
-        "pass_type": safe_enum_value_convert(member_dict["pass_type"]),
     }
 
     return Member(**cleaned_data)
@@ -153,10 +131,7 @@ def get_member_from_dict(member: dict) -> Member:
         "date_of_birth": None,
         "image_path": None, 
 
-        "pass_type": PassType.NO,
         "account_type": AccountType.MEMBER,
-        "entrances_left": 0,
-        "expiration_date": date.today() - timedelta(days=1),
         "register_date": date.today(),
 
         "last_check_in": None,
