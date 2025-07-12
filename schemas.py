@@ -118,7 +118,6 @@ class Exception_LogIn(BaseModel):
 class Req_Create_ExternalProviders(BaseModel):
     name: str
     description: Optional[str]
-    active: bool
     is_partial_payment: bool
     partial_payment: Optional[Decimal]
 
@@ -126,18 +125,64 @@ class Resp_Instance_ExternalProviders(BaseModel):
     id: int
     name: str
     description: Optional[str]
-    active: bool
     is_partial_payment: bool
-    partial_payment: Optional[Decimal]
+    partial_payment: Optional[Decimal] = None
+    is_deleted: bool
+
+    class Config:
+        from_attributes = True
 
 class Req_Update_ExternalProviders(BaseModel):
     id: int
     name: Optional[str]
     description: Optional[str]
-    active: Optional[bool]
     is_partial_payment: bool
     partial_payment: Optional[Decimal]
 
+""" PASS TYPES
+"""
+class Req_PassTypes_Create(BaseModel):
+    name: str
+    description: Optional[str]
+    price: Decimal
+    validity_days: Optional[int]
+    maximum_entries: Optional[int]
+    requires_external_auth: bool
+    external_provider_name: Optional[str]
+    external_provider_id: Optional[int]
+    is_ext_event_pass: bool
+    ext_event_code: Optional[str]
+
+class Resp_PassTypes_Inst(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    price: Decimal
+    validity_days: Optional[int]
+    maximum_entries: Optional[int]
+    requires_external_auth: bool
+    external_provider_name: Optional[str]
+    external_provider_id: Optional[int]
+    is_ext_event_pass: bool
+    ext_event_code: Optional[str]
+    is_deleted: bool
+    delete_date: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+class Req_PassTypes_Update(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    price: Decimal
+    validity_days: Optional[int]
+    maximum_entries: Optional[int]
+    requires_external_auth: bool
+    external_provider_name: Optional[str]
+    external_provider_id: Optional[int]
+    is_ext_event_pass: bool
+    ext_event_code: Optional[str]
 #===========================================================
 
 """ ADD || REGISTER NEW MEMBER

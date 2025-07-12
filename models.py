@@ -53,7 +53,6 @@ class PassType(Base_Members):
     """ Table stores every PassType possible.
 
     Args:
-        active: bool -> Is it possible to buy/use this Pass.
         validity_days: int -> Days form date.today() before Pass will be expired.
             "Null" - to set unlimited time
         maximum_entries: int -> How many entries can be done via this Pass.
@@ -63,9 +62,8 @@ class PassType(Base_Members):
     __tablename__ = "pass_types"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True, nullable=False)
-    description = Column(String, nullable=False)
-    active = Column(Boolean, default=True)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
 
     price = Column(Numeric(5, 2), nullable=False)
     validity_days = Column(Integer, nullable=True)
@@ -73,11 +71,16 @@ class PassType(Base_Members):
 
     # For external payment systems (if used)
     requires_external_auth = Column(Boolean, default=False)
+    external_provider_name = Column(String, nullable=True)
     external_provider_id = Column(Integer, ForeignKey("external_providers.id"), nullable=True)
 
     # For external events (Bristol, events, concerts, etc.).
     is_ext_event_pass = Column(Boolean, nullable=False, default=False)
     ext_event_code = Column(String, nullable=True)
+
+    # Delete information
+    is_deleted = Column(Boolean, default=False)
+    delete_date = Column(DateTime, nullable=True)
 
     # Links to relative tables
     external_provider = relationship("ExternalProvider")
@@ -92,24 +95,28 @@ class ExternalProvider(Base_Members):
         image_path: str -> Path to the picture that represents the provider.
             Stored as Path in DB and as an image on local machine - easy to upload on frontend
             [Not used at the moment]
-        active: bool -> Can this provider be used
 
         partial_payment: numeric -> Defines if user needs to pay additionally for this ExternalProvider
             None - no payment needed.
             Every time entrance is bougth it should be payed exact amount
+
+        is_deleted: bool -> Was Provider "deleted". If yes, can not be used.
+        delete_date: datetime -> For historical print.
     """
 
     __tablename__ = "external_providers"
 
     id = Column(Integer, primary_key=True)
 
-    name = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     image_path = Column(String, nullable=True)
-    active = Column(Boolean, default=True)
 
     is_partial_payment = Column(Boolean, default=False)
     partial_payment = Column(Numeric(5, 2), nullable=True)
+
+    is_deleted = Column(Boolean, default=False)
+    delete_date = Column(DateTime, nullable=True)
 
 class MemberPass(Base_Members):
     """ Table to store all passess of all users  ever were bought
