@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, Depends 
 
 # User
-from models import Member, CheckInEntry
+from models import ExternalProvider, Member, MemberPass
 from database import engine_members, engine_checkins, Base_Checkins, Base_Members, SessionLocal_Members, SessionLocal_Checkins
 #===========================================================
 
@@ -37,9 +37,11 @@ class AccountType(Enum):
     """ Defines what rights does a member posses. 
     """
 
-    ADMIN: int       = 0
-    INSTRUCTOR: int  = 1
-    MEMBER: int      = 2
+    ROOT: int        = 0
+    ADMIN: int       = 1
+    INSTRUCTOR: int  = 2
+    MEMBER: int      = 3
+    EXTERNAL: int    = 4
 #===========================================================
 
 """ STARTUP ACTIONS """
@@ -49,7 +51,7 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
     """
 
     # Try to get root user from the database
-    root = get_member_by_username(db, os.getenv("ROOT_LOGIN"))
+    root = db.query(Member).filter(Member.account_type == AccountType.ROOT.value).first()
 
     # Root does not exists --> create default one
     if root is None:
@@ -66,7 +68,7 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
             "email": os.getenv("ROOT_EMAIL"),
             "username": os.getenv("ROOT_LOGIN"),
             "password_hash": pass_hash,
-            "account_type": AccountType.ADMIN,
+            "account_type": AccountType.ROOT,
             "activated": True,   # First user activated by default
         }
         root: Member = get_member_from_dict(root_values)
@@ -82,8 +84,8 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
         # Send QR Code via email on self email address
         if os.getenv("SEND_WELCOME_EMAIL_ROOT") == "True":
             send_welcome_email_member(member=root,
-                                       qr_path=qr_code,
-                                       password=password)
+                                      qr_path=qr_code,
+                                      password=password)
             
         print("Root user was created with default values. Change it`s password and card ID as soon as possible!")
         return True
@@ -129,16 +131,17 @@ def get_member_from_dict(member: dict) -> Member:
         "email": None,
         "phone_number": None,
         "date_of_birth": None,
-        "image_path": None, 
+        "image_path": None,
+        "registration_date": date.today(),
 
         "account_type": AccountType.MEMBER,
-        "register_date": date.today(),
+        "privileges": "",
 
         "last_check_in": None,
 
-        "token": None,
         "username": get_random_string(12),
         "password_hash": None,
+        "token": None,
        
         "activated": False, # Always needed to be confirmed
     }
@@ -150,6 +153,9 @@ def get_member_from_dict(member: dict) -> Member:
     return member
 
 def get_member_by_card_id(db: Session, card_id: str) -> Member:
+    return db.query(Member).filter(Member.card_id == card_id).first()
+
+def get_member_by_card_id_with_raise(db: Session, card_id: str) -> Member:
     member: Member = db.query(Member).filter(Member.card_id == card_id).first()
     if not member:
         raise HTTPException(status_code=400,
@@ -158,6 +164,12 @@ def get_member_by_card_id(db: Session, card_id: str) -> Member:
 
 def get_member_by_username(db: Session, username: str) -> Member:
     return db.query(Member).filter(Member.username == username).first()
+
+def get_external_provider_by_id(db: Session, id: int) -> ExternalProvider:
+    return db.query(ExternalProvider).filter(ExternalProvider.id == id).first()
+
+def get_member_pass_by_id(db: Session, id: int) -> MemberPass:
+    return db.query(MemberPass).filter(MemberPass.id == id).first()
 
 """ Functions to use databases inside FastAPI through "Depends". """
 def get_db_members():

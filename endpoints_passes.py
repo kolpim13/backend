@@ -1,8 +1,11 @@
+from datetime import date, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from models import ExternalProvider, PassType
-from schemas import Req_Create_ExternalProviders, Req_PassTypes_Create, Req_PassTypes_Update, Req_Update_ExternalProviders, Resp_Instance_ExternalProviders, Resp_PassTypes_Inst
+from models import Member, ExternalProvider, MemberPass, PassType
+from schemas import Req_Create_ExternalProviders, Req_MemberPass_Add, Req_PassTypes_Create, Req_PassTypes_Update, Req_Update_ExternalProviders, Resp_Instance_ExternalProviders, Resp_MemberPass_Inst, Resp_PassTypes_Inst
 
 import project_utils as utils
 #===========================================================
@@ -35,15 +38,42 @@ def get_pass_type_by_id(db: Session, id: int) -> PassType:
 def get_pass_type_by_name_not_deleted(db: Session, name: str) -> PassType:
     return db.query(PassType).filter(PassType.name == name, 
                                      PassType.is_deleted == False).first()
+
+""" UTILS: memberPass
+"""
+def get_member_pass_active_internal_by_member_id(db: Session, member_card_id: str):
+    """ For now only one active MemberPass is possible to have for one User --> 
+        It is a good function to get current MemberPass
+    """
+    return db.query(MemberPass).filter(MemberPass.member_card_id == member_card_id,
+                                       or_(
+                                           MemberPass.expiration_date > date.today(),
+                                           MemberPass.expiration_date.is_(None)
+                                       ),
+                                       or_(
+                                           MemberPass.entries_left > 0,
+                                           MemberPass.entries_left.is_(None)
+                                       ),
+                                       MemberPass.is_ext_event_pass.is_(False),
+                                       MemberPass.is_closed.is_(False)).first()
+
+def has_member_active_internal_pass(db: Session, member_card_id: str) -> bool:
+    # Passes for external events are not counted.
+    if db.query(MemberPass).filter(MemberPass.member_card_id == member_card_id,
+                                   MemberPass.expiration_date > date.today(),
+                                   MemberPass.entries_left > 0,
+                                   MemberPass.is_ext_event_pass == False,
+                                   MemberPass.is_closed == False).first():
+        return True
+    return False
 #===========================================================
+
+router = APIRouter()
 
 """ EXTERNAL PROVIDERS
     Only admins (or users with same access level) should be able to use these endpoints.
     {Exception - GET endpoints}
 """
-
-router = APIRouter()
-
 @router.post("/external_providers", 
              response_model=Resp_Instance_ExternalProviders, 
              status_code=status.HTTP_201_CREATED)
@@ -149,7 +179,7 @@ def get_pass_types(db: Session = Depends(utils.get_db_members)):
             response_model=Resp_PassTypes_Inst,
             status_code=status.HTTP_200_OK)
 def put_pass_types_update(req: Req_PassTypes_Update,
-                                 db: Session = Depends(utils.get_db_members)):
+                          db: Session = Depends(utils.get_db_members)):
     pass_type = get_pass_type_by_id(db, req.id)
     if not pass_type:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -172,4 +202,57 @@ def put_pass_types_update(req: Req_PassTypes_Update,
     db.commit()
     db.refresh(pass_type)
     return pass_type
+#===========================================================
+
+""" MEMBER PASS
+"""
+@router.post("/member_pass",
+             response_model=Resp_MemberPass_Inst,
+             status_code=status.HTTP_201_CREATED)
+def post_member_pass_add(req: Req_MemberPass_Add,
+                         db: Session = Depends(utils.get_db_members)):
+    
+    # Check member exist
+    member: Member = utils.get_member_by_card_id(db, req.member_card_id)
+    if not member:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No member found")
+
+    # Check member has no active pass
+    if has_member_active_internal_pass(db, req.member_card_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Member has active pass already")
+    
+    # Assemble new MemberPass --> return it
+    pass_type = get_pass_type_by_id(db, req.pass_type_id)
+    args = {
+        'member_card_id': req.member_card_id,
+        'pass_type_id': req.pass_type_id,
+        'pass_type_name': pass_type.name,
+        'purchase_date': date.today(),
+        'expiration_date': date.today() + timedelta(days=pass_type.validity_days),
+        'entries_left': pass_type.maximum_entries,
+        'requires_external_auth': pass_type.requires_external_auth,
+        'external_provider_id': pass_type.external_provider_id,
+        'external_provider_name': pass_type.external_provider_name,
+        'is_ext_event_pass': pass_type.is_ext_event_pass,
+        'ext_event_code': pass_type.ext_event_code,
+        'status': None,
+        'is_closed': False,
+    }
+    member_pass = MemberPass(**args)
+    db.add(member_pass)
+    db.commit()
+    db.refresh(member_pass)
+    return member_pass
+
+@router.get("/member_pass/active/{member_card_id}",
+            response_model=list[Resp_MemberPass_Inst],
+            status_code=status.HTTP_200_OK)
+def get_member_pass_active(member_card_id:str,
+                            db: Session = Depends(utils.get_db_members)):
+    return db.query(MemberPass).filter(MemberPass.member_card_id == member_card_id,
+                                       MemberPass.expiration_date > date.today(),
+                                       MemberPass.entries_left > 0,
+                                       MemberPass.is_closed == False).all()
 #===========================================================

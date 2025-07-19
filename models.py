@@ -1,4 +1,6 @@
-from sqlalchemy import Column, ForeignKey, Float, Integer, Boolean, Numeric, String, Date, DateTime
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, ForeignKey, Integer, Boolean, Numeric, String, Date, DateTime
 from sqlalchemy.orm import relationship
 from database import Base_Members, Base_Checkins
 
@@ -23,25 +25,26 @@ class Member(Base_Members):
     card_id = Column(String, unique=True)
 
     # Main information about user/member
-    name = Column(String)
-    surname = Column(String)
-    email = Column(String, unique=True)
-    phone_number = Column(String, nullable=True)
-    date_of_birth = Column(Date, nullable=True)
-    image_path = Column(String, nullable=True)
-    registration_date = Column(Date)
+    name                    = Column(String, nullable=False)
+    surname                 = Column(String, nullable=False)
+    email                   = Column(String, unique=True, nullable=False)
+    phone_number            = Column(String, nullable=True)
+    date_of_birth           = Column(Date, nullable=True)
+    image_path              = Column(String, nullable=True)
+    registration_date       = Column(Date, nullable=False)
 
     # Technical information
-    account_type = Column(Integer, nullable=False)
-    privileges = Column(String, nullable=True)
+    account_type            = Column(Integer, nullable=False)
+    privileges              = Column(String, nullable=True)
     
     # Store last checkIn time separetly --> will be needed for some operations
-    last_check_in = Column(DateTime, nullable=True)
+    last_checkin_success    = Column(Boolean, nullable=True)
+    last_checkin_datetime   = Column(DateTime, nullable=True)
 
     # Data to log in && operate
-    username = Column(String, nullable=False, unique=True)  # Rename on login
-    password_hash = Column(String, nullable=False)
-    token = Column(String, unique=True, nullable=True)
+    username                = Column(String, nullable=False, unique=True)  # Rename on login
+    password_hash           = Column(String, nullable=False)
+    token                   = Column(String, unique=True, nullable=True)
 
     # [TBD]
     activated = Column(Boolean)
@@ -115,6 +118,8 @@ class ExternalProvider(Base_Members):
     is_partial_payment = Column(Boolean, default=False)
     partial_payment = Column(Numeric(5, 2), nullable=True)
 
+    # payment_from_provider = Column(Numeric, default=0) # To be extended in the future
+
     is_deleted = Column(Boolean, default=False)
     delete_date = Column(DateTime, nullable=True)
 
@@ -140,6 +145,7 @@ class MemberPass(Base_Members):
     # For external payment systems (if used)
     requires_external_auth = Column(Boolean, default=False)
     external_provider_id = Column(Integer, ForeignKey("external_providers.id"), nullable=True)
+    external_provider_name = Column(String, nullable=True)
 
     # For external events (Bristol, events, concerts, etc.).
     is_ext_event_pass = Column(Boolean, nullable=False, default=False)
@@ -150,13 +156,14 @@ class MemberPass(Base_Members):
     is_closed = Column(Boolean, nullable=False, default=False)
 
     # Relative fields
-    member_id = Column(Integer, ForeignKey("members.id"))
+    member_card_id = Column(Integer, ForeignKey("members.card_id"))
     pass_type_id = Column(Integer, ForeignKey("pass_types.id"))
+    pass_type_name = Column(String, nullable=False)
 
     # Links to relative tables
     external_provider = relationship("ExternalProvider")
-    member = relationship("Member", back_populates="member_passes")
     pass_type = relationship("PassType", back_populates="member_passes")
+    member = relationship("Member", back_populates="member_passes")
 
 class MemberSurvey_Test(Base_Members):
     """ Place holder for the survey about smth (most probably an application among instructors).
@@ -169,34 +176,75 @@ class MemberSurvey_Test(Base_Members):
 """ LOG TABLES:
     Entry history, Login logs, etc.
 """
-class CheckInEntry(Base_Checkins):
-    """ Database to store all entrances log """
+class CheckIn(Base_Checkins):
+    """_summary_
 
-    __tablename__ = "CheckInHistory"
+    Columns:
+        validated_by_card_id: str -> Card ID of a person who did scann. [None] if it was self scanned
+        validated_by_name: str -> Name of a person who did scann
+        validated_by_surnamename: str -> Surname of a person who did scan
+        hall: str -> Place it was scanned in.
+
+        member_pass_id: int -> MemberPass was used to checkin. [None] if no pass was used.
+            Serves to "bind" current row to corresponding row in MemberPass table
+        member_pass_name: str -> ...
+        is_ext_event_pass: bool -> Was this entry dedicated for the special event
+        ext_event_code: str -> Code of the special event. [None] if it was usual event.
+        external_provider_id: int ->  ExternalProvider was used to checkin. [None] if no pass was used.
+            Serves to "bind" current row to corresponding row in ExternalProvider table
+        external_provider_name: str -> ...
+
+        member_card_id: str -> Card ID of a member
+        member_name: str -> member`s name
+        member_surname: str -> member`s surname
+
+        date_time: datetime -> date and time the member tried to checkin.
+
+        is_successful: bool -> was entry accepted[True] or rejected[False]
+        rejected_reasones: str -> Description why entry was rejected
+
+    Returns:
+        _type_: _description_
+    """
+
+    __tablename__ = "checkins"
 
     id = Column(Integer, primary_key=True, unique=True)
 
-    # Information about who did scan
-    instructor_card_id = Column(String)    # To be deleted? [or at least masked]
-    instructor_name = Column(String)
-    instructor_surname = Column(String)
-    hall = Column(String, nullable=True)
+    # Information about who did scan and where (the validator)
+    validated_by_card_id        = Column(String, nullable=True, index=True)
+    validated_by_name           = Column(String, nullable=True)
+    validated_by_surnamename    = Column(String, nullable=True)
+    hall                        = Column(String, nullable=True) # Not mused at the moment
+
+    # Pass and ExternalProvider information
+    member_pass_id              = Column(Integer, nullable=True)
+    pass_id                     = Column(Integer, nullable=True, index=True)
+    pass_name                   = Column(String, nullable=True)
+    is_ext_event_pass           = Column(Boolean, nullable=True)
+    ext_event_code              = Column(String, nullable=True)
+    external_provider_id        = Column(Integer, nullable=True, index=True)
+    external_provider_name      = Column(String, nullable=True)
 
     # Information about the member
-    card_id = Column(String)
-    name = Column(String)
-    surname = Column(String)
+    member_card_id              = Column(String, nullable=False, index=True)
+    member_name                 = Column(String, nullable=False)
+    member_surname              = Column(String, nullable=False)
 
     # Checkin date & time + [additional information ?]
-    date_time = Column(DateTime)
+    date_time                   = Column(DateTime, nullable=False, index=True,
+                                         default=datetime.now(timezone.utc))
+    
+    # Was entrance success --> if not why.
+    is_successful               = Column(Boolean, nullable=False, default=True)
+    rejected_reason             = Column(String, nullable=True)
 
-    # Paayment & Pass details
-    pass_type = Column(Integer)
-    entrances_left = Column(Integer)
-    # Pass type member posses on the purchase moment (NO / YES / MEDICOVER / etc.)
-    # How many entries left after payment was done
-    # 
-
+    def __repr__(self):
+        return "Entrance for {name} {surname} validated by {validator_name} {validator_surname}, at {time} was {is_success}".format(
+            name=self.member_name, surname=self.member_surname,
+            validator_name=self.validated_by_name, validator_surname=self.validated_by_surnamename,
+            time=self.checkin_time, is_success="successful" if self.is_successful == True else "unsuccessful",
+        )
 
 # class Survey():
 #     """ For future use [Collect data from members through application / site]. 
