@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
 from decimal import Decimal
 #===========================================================
 
@@ -175,26 +175,34 @@ class Resp_ChecIn_Inst(BaseModel):
 
 """ STATISTICS
 """
-class Req_Statistics_Admin_CheckInsByType_All(BaseModel):
-    """ Used to request more-or-less detailed data about all checkins made by
-        all instructors 
-    """
-    date_time_min: datetime
-    date_time_max: datetime
+class Req_Statistics_InstructorsCheckIns(BaseModel):
+    date_from: date
+    date_to: date
 
-class Resp_Statistics_Admin_CheckInsByType(BaseModel):
-    """ Used to represent sorted response of how many entries did an instructor
-        in a period of time. 
-    """
-    name: str = ""
-    surname: str = ""
-    entries_pass: int = 0
-    entries_pzu: int = 0
-    entries_medicover: int = 0
-    entries_multisport: int = 0
-    entries_other: int = 0
-    entries_total: int = 0
-    
-    class Config:
-            from_attributes = True
+class Resp_Statistics_InstructorsCheckIns(BaseModel):
+    validated_by_card_id: str
+    validated_by_name: str
+    validated_by_surnamename: str
+    count: int
+
+class Req_Statistics_InstructorCheckInsDetailed(BaseModel):
+    validated_by_card_id: str
+    date_from: date
+    date_to: date
+    page: Optional[int]
+    page_size: Optional[int] = 50
+
+class Resp_Statistics_InstructorCheckInsDetailed(BaseModel):
+    name: str
+    surname: str
+    date_time: datetime
+    is_successful: bool
+    rejected_reason: Optional[str]
+
+class Resp_Paginated_Statistics_InstructorCheckInsDetailed(BaseModel):
+    total: int          # Total items in DB
+    page: int           # Current page
+    page_size: int      # Items per page
+    remaining: int      # How many are left
+    items: List[Resp_Statistics_InstructorCheckInsDetailed]
 #===========================================================
