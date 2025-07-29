@@ -46,8 +46,9 @@ class Member(Base_Members):
     password_hash           = Column(String, nullable=False)
     token                   = Column(String, unique=True, nullable=True)
 
-    # [TBD]
-    activated = Column(Boolean)
+    # Confirmation details
+    activated               = Column(Boolean, default=False)
+    expiration_time         = Column(DateTime, nullable=True)
 
     # Links to relative tables
     member_passes = relationship("MemberPass", back_populates="member")

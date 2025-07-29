@@ -1,7 +1,11 @@
+from datetime import datetime
 from smtplib import SMTPServerDisconnected
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi_utils.tasks import repeat_every
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
+from database import SessionLocal_Members
 from models import Member
 from schemas import Req_LogIn_Username, Req_Members_Add, Resp_Members_Inst
 
@@ -38,6 +42,36 @@ def post_login_by_username(login_data: Req_LogIn_Username,
     
     # Return user info
     return member
+#===========================================================
+
+""" MEMBERS
+    SignUp, mail confirmation, password restoration
+    Deleting unconfiremed members
+"""
+@router.post("members/signup",
+             status_code=status.HTTP_202_ACCEPTED)
+async def post_signup(db: Session = Depends(utils.get_db_members)):
+    # Check if member already registered
+    member: Member = await db.execute(select(Member).where(Member.email == req.email)).scalar_one_or_none()
+    if member and member.activated:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Email already registered and confirmed")
+    
+    # Add member to a database
+
+@repeat_every(seconds=6*60*60)
+async def cleanup_unconfirmed_members() -> None:
+    """ Every six hours do cleanup of the users whom emails were not confirmed.
+    """
+    db = SessionLocal_Members()
+    db.query(Member).filter(Member.activated.is_(False),
+                            Member.expiration_time < datetime.now())\
+                    .delete()
+    db.commit()
+    db.close()
+
+async def startup():
+    await cleanup_unconfirmed_members()
 #===========================================================
 
 """ MEMBERS

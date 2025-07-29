@@ -2,13 +2,27 @@ import time
 import dotenv
 
 from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
 
 from endpoints_passes import router as router_passes
-from endpoints_userManagement import router as router_user_management
+from endpoints_userManagement import router as router_user_management, startup as startup_user_management
 from endpoints_logs import router as router_logging
 from endpoints_statistics import router as router_statistics
 
 import project_utils as utils
+#===========================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup code
+    print("StartUp")
+    await startup_user_management()
+
+    # Program execution
+    yield
+
+    # Finilazing code
+    print("Finish")
 #===========================================================
 
 """ START THE APPLICATION """
@@ -21,7 +35,8 @@ utils.databases_init_tables()
 utils.check_create_root()
 
 # FastAPI application to run --> add all routers
-app = FastAPI(title="Dance School Backend")
+app = FastAPI(title="Dance School Backend",
+              lifespan=lifespan)
 app.include_router(router_passes)
 app.include_router(router_user_management)
 app.include_router(router_logging)
