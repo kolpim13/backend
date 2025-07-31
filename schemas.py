@@ -5,15 +5,34 @@ from decimal import Decimal
 #===========================================================
 
 """ USER MANAGEMENT:
-    Login || Restore member [TBD] || Confirm email [TBD]
+    Login | SignUp | Restore data [TBD] | Confirm email [TBD]
 """
 class Req_LogIn_Username(BaseModel):
+    username: str
+    password: str
+
+class Req_SignUp(BaseModel):
+    name: str
+    surname: str
+    email: str
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
     username: str
     password: str
 
 """ USER MANAGEMENT:
     Members
 """
+class Req_Members_Add(BaseModel):
+    name: str
+    surname: str
+    email: str
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
+    account_type: int
+    send_welcome_email: Optional[bool] = True
+    send_welcome_mms: Optional[bool]
+
 class Resp_Members_Inst(BaseModel):
     card_id: str
     name: str
@@ -31,16 +50,6 @@ class Resp_Members_Inst(BaseModel):
 
     class Config:
         from_attributes = True
-
-class Req_Members_Add(BaseModel):
-    name: str
-    surname: str
-    email: str
-    phone_number: Optional[str]
-    date_of_birth: Optional[date]
-    account_type: int
-    send_welcome_email: Optional[bool] = True
-    send_welcome_mms: Optional[bool]
 #===========================================================
 
 """ EXTERNAL PROVIDERS

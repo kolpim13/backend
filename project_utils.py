@@ -30,6 +30,9 @@ PATH_BASE = Path.cwd().resolve()
 PATH_DATABASES = Path(PATH_BASE, "databases")
 PATH_TEMPLATES = Path(PATH_BASE, "templates")
 PATH_QR_CODES = Path(PATH_BASE, "qr_codes")
+
+EMAIL = os.getenv("ROOT_EMAIL")
+EMAIL_PASS = os.getenv("ROOT_EMAIL_APP_PASS")
 #===========================================================
 
 """ Datatypes to be used as databases fields """
@@ -144,6 +147,7 @@ def get_member_from_dict(member: dict) -> Member:
         "token": None,
        
         "activated": False, # Always needed to be confirmed
+        "expiration_time": None,
     }
     member = {**default, **member}
     member = dict_to_Member(member) # Probably not needed
@@ -357,4 +361,27 @@ def send_welcome_email_member(member: Member,
                        member.name, member.surname,
                        member.username, password, 
                        qr_path, template)
+
+def send_confirmation_email(to_email: str, token: str):
+    # Link to be replaced for production
+    confirm_url = f"http://localhost:8000/confirm?token={token}"
+    body = f"""
+    Thanks for signing up!
+
+    Please click the link below to confirm your account. This link expires in 6 hours.
+
+    {confirm_url}
+
+    If you didn’t request this, simply ignore.
+    """
+    msg = EmailMessage()
+    msg["Subject"] = "Confirm your Impact Studio account"
+    msg["From"]    = EMAIL
+    msg["To"]      = to_email
+    msg.set_content(body)
+
+    # Send email
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
+        smtp.login(EMAIL, EMAIL_PASS)
+        smtp.send_message(msg)
 #===========================================================
