@@ -2,9 +2,8 @@
 import os
 import random
 import string
-import inspect
 from pathlib import Path
-from datetime import date, timedelta
+from datetime import date
 from enum import Enum
 
 # Poject-specific / Specialized packages
@@ -362,18 +361,19 @@ def send_welcome_email_member(member: Member,
                        member.username, password, 
                        qr_path, template)
 
-def send_confirmation_email(to_email: str, token: str):
+def send_confirmation_email(to_email: str, key: str):
     # Link to be replaced for production
-    confirm_url = f"http://localhost:8000/confirm?token={token}"
+    link = os.getenv("BACKEND_ADDRESS")
+    confirm_url = f"{link}/confirm/{key}"
     body = f"""
-    Thanks for signing up!
+        Thanks for signing up!
 
-    Please click the link below to confirm your account. This link expires in 6 hours.
+        Please open this link to confirm (expires in 6 hours):
+        {confirm_url}
 
-    {confirm_url}
-
-    If you didn’t request this, simply ignore.
+        If you didn’t request this, ignore this email.
     """
+
     msg = EmailMessage()
     msg["Subject"] = "Confirm your Impact Studio account"
     msg["From"]    = EMAIL

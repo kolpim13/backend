@@ -44,7 +44,8 @@ class Member(Base_Members):
     # Data to log in && operate
     username                = Column(String, nullable=False, unique=True)  # Rename on login
     password_hash           = Column(String, nullable=False)
-    token                   = Column(String, unique=True, nullable=True)
+    token                   = Column(String, nullable=True)
+    key                     = Column(String(16), unique=True, nullable=True)
 
     # Confirmation details
     activated               = Column(Boolean, default=False)

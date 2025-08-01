@@ -8,3 +8,6 @@ python-dotenv
 pillow 
 sendgrid
 passlib[argon2]
+alembic
+psycopg2
+itsdangerous

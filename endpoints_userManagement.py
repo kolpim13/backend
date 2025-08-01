@@ -1,3 +1,4 @@
+import secrets
 import os
 from datetime import datetime, timedelta
 from smtplib import SMTPServerDisconnected
@@ -32,7 +33,7 @@ def generate_confirmation_token(email: str, password_hash: str):
 
 def confirm_token(token: str, expiration: int = 6*60*60) -> dict:
     serializer = get_serializer()
-    data = serializer.loads(token, max_age=expiration)
+    data = serializer.loads(token)
     return data
 #===========================================================
 
@@ -51,7 +52,11 @@ def post_login_by_username(login_data: Req_LogIn_Username,
     """
 
     # Validate username
-    member = utils.get_member_by_username(db, login_data.username)
+    member: Member | None = db.execute(select(Member)\
+        .where(and_(Member.username == login_data.username,
+                   Member.activated.is_(True))))\
+        .scalar_one_or_none()
+
     if member is None:
         raise HTTPException(status_code=401,
                             detail="Wrong username")
@@ -72,73 +77,79 @@ def post_login_by_username(login_data: Req_LogIn_Username,
 @router.post("/signup",
              status_code=status.HTTP_201_CREATED)
 def post_signup(req: Req_SignUp,
-                      db: Session = Depends(utils.get_db_members)):
+                db: Session = Depends(utils.get_db_members)):
+    
     # Check if member already registered
     member: Member | None = db.execute(select(Member)\
-        .where(or_(Member.email == req.email,
-                   Member.username == req.username)))\
+        .where(Member.email == req.email))\
         .scalar_one_or_none()
     
     if member and member.activated:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Member with such email or username already registered and confirmed")
+                            detail="Member with provided email already registered and confirmed")
     
     # Hash the password
     pwd_hash = utils.hash_string(req.password)
     token = generate_confirmation_token(req.email, pwd_hash)
+    key = secrets.token_urlsafe(16)
 
     # If user already exist -> Update pwd_hash || registration date. Othervise -> Add new.
     if member:
+        member.name = req.name
+        member.surname = req.surname
+        member.username = req.username
         member.password_hash = pwd_hash
+        member.phone_number = req.phone_number
+        member.date_of_birth = req.date_of_birth
         member.registration_date = datetime.now()
         member.token = token
+        member.key = key
         db.refresh(member)
     else:
         member_data = req.model_dump()
         member_data["password_hash"] = pwd_hash
         member_data["expiration_time"] = datetime.now() + timedelta(hours=6)
         member_data["token"] = token
+        member_data["key"] = key
+        member_data["card_id"] = utils.generate_qr_code_value(db)
         member: Member = utils.get_member_from_dict(member_data)
         db.add(member)
         
     # Protection against unexcpected situations during adding new user
     try:
         db.commit()
+        db.refresh(member)
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Unexcpected error. Operation reverted")
 
     # Send confirmation mail
-    # utils.send_confirmation_email(req.email, token)
-    print(token)
+    utils.send_confirmation_email(req.email, key)
 
-    member_test: Member | None = db.execute(select(Member)\
-        .where(Member.token == token))\
-        .scalar_one_or_none()
-    
     # Return data
     return {"details": "Confirmation link sent; please check your email."}
 
-@router.get("/confirm/{token}", 
+@router.get("/confirm/{key}", 
          response_class=HTMLResponse,
          status_code=status.HTTP_202_ACCEPTED)
-def get_confirm_email(token: str, 
+def get_confirm_email(key: str, 
                       db: Session = Depends(utils.get_db_members)):
     
     # Confirm token real
     try:
+        token: str = db.execute(select(Member.token).where(Member.key == key)).scalar_one_or_none()
         data = confirm_token(token)
+        email       = data["email"]
+        pwd_hash    = data["pwd"]
     except Exception as e:
         # SignatureExpired, BadTimeSignature, BadSignature
         return HTMLResponse(f"<h3>Confirmation failed: {e}</h3>", 
                             status_code=400)
 
-    # Check token is valid
-    member: Member | None = db.execute(select(Member)\
-        .where(Member.token == token))\
-        .scalar_one_or_none()
-    
+    # Get user with corresponsing email --> check its password
+    member = db.execute(select(Member).where(Member.email == email)).scalar_one_or_none()
+
     if not member:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Invalid or expired token povided")
@@ -147,25 +158,26 @@ def get_confirm_email(token: str,
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Email is already confirmed")
 
-    # Collect data
-    email       = data["email"]
-    pwd_hash    = data["pwd"]
-
-    # Check email and pass hash
-    member = db.execute(select(Member)
-                   .where(Member.email == email))\
-                   .scalar_one_or_none()
-    
-    if member.email != email:
-        raise HTTPException(400, "No signup found for this email.")
     if member.password_hash != pwd_hash:
         raise HTTPException(400, "Invalid or stale confirmation link.")
 
     # mark confirmed --> update database
     member.activated = True
     member.token = None
-    db.commit()
-    db.refresh(member)
+
+    # Generate QR --> Send welcome mail
+    try:
+        qr_path = utils.generate_qr_code_member(member=member)
+        utils.send_welcome_email_member(member=member, 
+                                        qr_path=qr_path, password="Confidential")
+        db.commit()
+        db.refresh(member)
+    except SMTPServerDisconnected:
+        # Delete generated qr_code --> raise corresponding exception
+        qr_path.unlink()
+        db.rollback()
+        raise HTTPException(status_code=400,
+                            detail="Could not send an email to user")
 
     # Redirect to your real “account confirmed” page or show a message:
     return HTMLResponse("<h3>Your account has been confirmed. You may now log in.</h3>")
@@ -177,7 +189,7 @@ async def cleanup_unconfirmed_members() -> None:
     db = SessionLocal_Members()
     db.query(Member).filter(Member.activated.is_(False),
                             Member.expiration_time < datetime.now())\
-                    .delete()
+                            .delete()
     db.commit()
     db.close()
 
