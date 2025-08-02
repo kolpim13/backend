@@ -1,4 +1,5 @@
 fastapi
+fastapi_utils
 uvicorn
 sqlalchemy
 pydantic
@@ -11,3 +12,4 @@ passlib[argon2]
 alembic
 psycopg2
 itsdangerous
+typing_inspect

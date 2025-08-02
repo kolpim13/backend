@@ -1,5 +1,6 @@
 # Generic packages
 import os
+import dotenv
 import random
 import string
 from pathlib import Path
@@ -30,8 +31,7 @@ PATH_DATABASES = Path(PATH_BASE, "databases")
 PATH_TEMPLATES = Path(PATH_BASE, "templates")
 PATH_QR_CODES = Path(PATH_BASE, "qr_codes")
 
-EMAIL = os.getenv("ROOT_EMAIL")
-EMAIL_PASS = os.getenv("ROOT_EMAIL_APP_PASS")
+env = {}
 #===========================================================
 
 """ Datatypes to be used as databases fields """
@@ -61,14 +61,14 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
 
         # Setup root user value
         qr_value: str = generate_qr_code_value(db)
-        password = os.getenv("ROOT_PASS")
+        password = env["ROOT_PASS"]
         pass_hash = hash_string(password)
         root_values = {
             "card_id": qr_value,
-            "name": os.getenv("ROOT_NAME"),
-            "surname": os.getenv("ROOT_SURNAME"),
-            "email": os.getenv("ROOT_EMAIL"),
-            "username": os.getenv("ROOT_LOGIN"),
+            "name": env["ROOT_NAME"],
+            "surname": env["ROOT_SURNAME"],
+            "email": env["ROOT_EMAIL"],
+            "username": env["ROOT_LOGIN"],
             "password_hash": pass_hash,
             "account_type": AccountType.ROOT,
             "activated": True,   # First user activated by default
@@ -84,7 +84,7 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
                                          root.name, root.surname)
 
         # Send QR Code via email on self email address
-        if os.getenv("SEND_WELCOME_EMAIL_ROOT") == "True":
+        if env["ROOT_SEND_WELCOME_EMAIL"] == "True":
             send_welcome_email_member(member=root,
                                       qr_path=qr_code,
                                       password=password)
@@ -104,6 +104,36 @@ def databases_init_tables() -> None:
     Base_Members.metadata.create_all(bind=engine_members)
     Base_Checkins.metadata.create_all(bind=engine_checkins)
     return
+
+def load_environment_variables() -> None:
+    """ Function exists due to Droplet/Ubuntu limitation:
+        It does not allow to read environment variables until you 
+        read and write it.
+    """
+
+    # Read and write data
+    env_file = dotenv.find_dotenv()
+    dotenv.load_dotenv(env_file)
+    
+    # Read all variables used
+    env["ROOT_NAME"] = os.getenv("ROOT_NAME")
+    env["ROOT_SURNAME"] = os.getenv("ROOT_SURNAME")
+    env["ROOT_LOGIN"] = os.getenv("ROOT_LOGIN")
+    env["ROOT_PASS"] = os.getenv("ROOT_PASS")
+    env["ROOT_EMAIL"] = os.getenv("ROOT_EMAIL")
+    env["ROOT_EMAIL_APP_PASS"] = os.getenv("ROOT_EMAIL_APP_PASS")
+
+    env["SEND_WELCOME_EMAIL"] = os.getenv("SEND_WELCOME_EMAIL")
+    env["ROOT_SEND_WELCOME_EMAIL"] = os.getenv("ROOT_SEND_WELCOME_EMAIL")
+
+    env["QR_CODE_VALUE_LEN"] = os.getenv("QR_CODE_VALUE_LEN")
+    env["LOGIN_DEFAULT_LEN"] = os.getenv("LOGIN_DEFAULT_LEN")
+    env["PASSWORD_DEFAULT_LEN"] = os.getenv("PASSWORD_DEFAULT_LEN")
+
+    env["SECRET_KEY"] = os.getenv("SECRET_KEY")
+    env["SECRET_SALT"] = os.getenv("SECRET_SALT")
+
+    env["BACKEND_ADDRESS"] = os.getenv("BACKEND_ADDRESS")
 #===========================================================
 
 """ DATABASE RELATED ACTIONS """
@@ -218,7 +248,7 @@ def generate_qr_code_value(db: Session = Depends(get_db_members)) -> str:
     """
 
     while True:
-        code_value: str = get_random_string(int(os.getenv("QR_CODE_VALUE_LEN")))
+        code_value: str = get_random_string(int(env["QR_CODE_VALUE_LEN"]))
         exists: Member = db.query(Member).filter(Member.card_id == code_value).first()
         if not exists:
             return code_value
@@ -303,8 +333,8 @@ def send_welcome_email(email_to: str,
                        qr_path: Path, template: Path = None) -> None:
 
     # Get needed data from environmental vars
-    email_from = os.getenv("ROOT_EMAIL")
-    email_pass = os.getenv("ROOT_EMAIL_APP_PASS")
+    email_from = env["ROOT_EMAIL"]
+    email_pass = env("ROOT_EMAIL_APP_PASS")
 
     # Ensure email template is not null
     if not template:
@@ -363,7 +393,7 @@ def send_welcome_email_member(member: Member,
 
 def send_confirmation_email(to_email: str, key: str):
     # Link to be replaced for production
-    link = os.getenv("BACKEND_ADDRESS")
+    link = env["BACKEND_ADDRESS"]
     confirm_url = f"{link}/confirm/{key}"
     body = f"""
         Thanks for signing up!
@@ -376,12 +406,12 @@ def send_confirmation_email(to_email: str, key: str):
 
     msg = EmailMessage()
     msg["Subject"] = "Confirm your Impact Studio account"
-    msg["From"]    = EMAIL
+    msg["From"]    = env["ROOT_EMAIL"]
     msg["To"]      = to_email
     msg.set_content(body)
 
     # Send email
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
-        smtp.login(EMAIL, EMAIL_PASS)
+        smtp.login(env["ROOT_EMAIL"], env["ROOT_EMAIL_APP_PASS"])
         smtp.send_message(msg)
 #===========================================================

@@ -18,13 +18,10 @@ import project_utils as utils
 #===========================================================
 
 router = APIRouter()
-
-SECRET_KEY = os.getenv("SECRET_KEY")
-SECRET_SALT = os.getenv("SECRET_SALT")
 #===========================================================
 
 def get_serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(SECRET_KEY, salt=SECRET_SALT)
+    return URLSafeTimedSerializer(utils.env["SECRET_KEY"], salt=utils.env["SECRET_SALT"])
 
 def generate_confirmation_token(email: str, password_hash: str):
     serializer = get_serializer()
@@ -54,7 +51,7 @@ def post_login_by_username(login_data: Req_LogIn_Username,
     # Validate username
     member: Member | None = db.execute(select(Member)\
         .where(and_(Member.username == login_data.username,
-                   Member.activated.is_(True))))\
+                    Member.activated.is_(True))))\
         .scalar_one_or_none()
 
     if member is None:
