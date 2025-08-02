@@ -2,9 +2,8 @@
 import os
 import random
 import string
-import inspect
 from pathlib import Path
-from datetime import date, timedelta
+from datetime import date
 from enum import Enum
 
 # Poject-specific / Specialized packages
@@ -22,7 +21,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, Depends 
 
 # User
-from models import Member, CheckInEntry
+from models import ExternalProvider, Member, MemberPass
 from database import engine_members, engine_checkins, Base_Checkins, Base_Members, SessionLocal_Members, SessionLocal_Checkins
 #===========================================================
 
@@ -30,37 +29,21 @@ PATH_BASE = Path.cwd().resolve()
 PATH_DATABASES = Path(PATH_BASE, "databases")
 PATH_TEMPLATES = Path(PATH_BASE, "templates")
 PATH_QR_CODES = Path(PATH_BASE, "qr_codes")
+
+EMAIL = os.getenv("ROOT_EMAIL")
+EMAIL_PASS = os.getenv("ROOT_EMAIL_APP_PASS")
 #===========================================================
 
 """ Datatypes to be used as databases fields """
-class PassType(Enum):
-    """ Pass type of a member.
-        Regular pass    - [1; 20],
-        Medicover       - [21; 40],
-        PZU             - [41; 60],
-        MULTISPORT      - [61; 80],
-        RESERVED        - [81; 100],
-        OTHER SYSTEMS   - [101, xxx]
-    """
-
-    NO: int             = 0
-    LIMITED_1: int      = 1
-    LIMITED_4: int      = 4
-    LIMITED_8: int      = 8
-    LIMITED_12: int     = 12
-    UNLIMITED: int      = 20
-    MEDICOVER_1: int    = 21
-    PZU_1: int          = 41
-    MULTISPORT_1: int   = 61
-    OTHER_1: int        = 101
-
 class AccountType(Enum):
     """ Defines what rights does a member posses. 
     """
 
-    ADMIN: int       = 0
-    INSTRUCTOR: int  = 1
-    MEMBER: int      = 2
+    ROOT: int        = 0
+    ADMIN: int       = 1
+    INSTRUCTOR: int  = 2
+    MEMBER: int      = 3
+    EXTERNAL: int    = 4
 #===========================================================
 
 """ STARTUP ACTIONS """
@@ -70,7 +53,7 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
     """
 
     # Try to get root user from the database
-    root = get_member_by_username(db, os.getenv("ROOT_LOGIN"))
+    root = db.query(Member).filter(Member.account_type == AccountType.ROOT.value).first()
 
     # Root does not exists --> create default one
     if root is None:
@@ -87,7 +70,7 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
             "email": os.getenv("ROOT_EMAIL"),
             "username": os.getenv("ROOT_LOGIN"),
             "password_hash": pass_hash,
-            "account_type": AccountType.ADMIN,
+            "account_type": AccountType.ROOT,
             "activated": True,   # First user activated by default
         }
         root: Member = get_member_from_dict(root_values)
@@ -103,8 +86,8 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
         # Send QR Code via email on self email address
         if os.getenv("SEND_WELCOME_EMAIL_ROOT") == "True":
             send_welcome_email_member(member=root,
-                                       qr_path=qr_code,
-                                       password=password)
+                                      qr_path=qr_code,
+                                      password=password)
             
         print("Root user was created with default values. Change it`s password and card ID as soon as possible!")
         return True
@@ -132,7 +115,6 @@ def dict_to_Member(member_dict: dict) -> Member:
     cleaned_data = {
         **filter_kwargs_for_class(Member, member_dict),
         "account_type": safe_enum_value_convert(member_dict["account_type"]),
-        "pass_type": safe_enum_value_convert(member_dict["pass_type"]),
     }
 
     return Member(**cleaned_data)
@@ -151,21 +133,20 @@ def get_member_from_dict(member: dict) -> Member:
         "email": None,
         "phone_number": None,
         "date_of_birth": None,
-        "image_path": None, 
+        "image_path": None,
+        "registration_date": date.today(),
 
-        "pass_type": PassType.NO,
         "account_type": AccountType.MEMBER,
-        "entrances_left": 0,
-        "expiration_date": date.today() - timedelta(days=1),
-        "register_date": date.today(),
+        "privileges": "",
 
         "last_check_in": None,
 
-        "token": None,
         "username": get_random_string(12),
         "password_hash": None,
+        "token": None,
        
         "activated": False, # Always needed to be confirmed
+        "expiration_time": None,
     }
     member = {**default, **member}
     member = dict_to_Member(member) # Probably not needed
@@ -175,6 +156,9 @@ def get_member_from_dict(member: dict) -> Member:
     return member
 
 def get_member_by_card_id(db: Session, card_id: str) -> Member:
+    return db.query(Member).filter(Member.card_id == card_id).first()
+
+def get_member_by_card_id_with_raise(db: Session, card_id: str) -> Member:
     member: Member = db.query(Member).filter(Member.card_id == card_id).first()
     if not member:
         raise HTTPException(status_code=400,
@@ -183,6 +167,12 @@ def get_member_by_card_id(db: Session, card_id: str) -> Member:
 
 def get_member_by_username(db: Session, username: str) -> Member:
     return db.query(Member).filter(Member.username == username).first()
+
+def get_external_provider_by_id(db: Session, id: int) -> ExternalProvider:
+    return db.query(ExternalProvider).filter(ExternalProvider.id == id).first()
+
+def get_member_pass_by_id(db: Session, id: int) -> MemberPass:
+    return db.query(MemberPass).filter(MemberPass.id == id).first()
 
 """ Functions to use databases inside FastAPI through "Depends". """
 def get_db_members():
@@ -370,4 +360,28 @@ def send_welcome_email_member(member: Member,
                        member.name, member.surname,
                        member.username, password, 
                        qr_path, template)
+
+def send_confirmation_email(to_email: str, key: str):
+    # Link to be replaced for production
+    link = os.getenv("BACKEND_ADDRESS")
+    confirm_url = f"{link}/confirm/{key}"
+    body = f"""
+        Thanks for signing up!
+
+        Please open this link to confirm (expires in 6 hours):
+        {confirm_url}
+
+        If you didn’t request this, ignore this email.
+    """
+
+    msg = EmailMessage()
+    msg["Subject"] = "Confirm your Impact Studio account"
+    msg["From"]    = EMAIL
+    msg["To"]      = to_email
+    msg.set_content(body)
+
+    # Send email
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
+        smtp.login(EMAIL, EMAIL_PASS)
+        smtp.send_message(msg)
 #===========================================================

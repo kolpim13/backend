@@ -1,229 +1,217 @@
 from pydantic import BaseModel
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
+from decimal import Decimal
 #===========================================================
 
-class CheckInRequest(BaseModel):
-    """ Data needed to perform a checkin operation.
-    """
-
-    card_id: str
-    hall: Optional[str] = "Impakt"
-    payment_by_externa_tool: Optional[bool] = False
-
-class CheckInLogFilters(BaseModel):
-    # Maximum amount of data to get
-    limit: int
-
-    # Data about person who scanned and where
-    control_name: Optional[str] = None
-    control_surname: Optional[str] = None
-    hall: Optional[str] = None
-
-    # Information about the member
-    card_id: Optional[str] = None
-    name: Optional[str] = None
-    surname: Optional[str] = None
-
-    # Checkin date & time
-    date_time_min: Optional[datetime] = None
-    date_time_max: Optional[datetime] = None
-
-class MemberUpdateRequest(BaseModel):
-    """ Data to be provided during member information update. 
-    """
-
-    card_id: str
-
-    name: Optional[str] = None
-    surname: Optional[str] = None
-    email: Optional[str] = None
-    phone_number: Optional[str] = None
-    date_of_birth: Optional[date] = None
-
-    pass_type: Optional[int] = None
-    account_type: Optional[int] = None
-    entrances_left: Optional[int] = None
-    expiration_date: Optional[date] = None
-
-class MemberAddRequest(BaseModel):
-    name: str
-    surname: str
-    email: str
-    phone_number: Optional[str]
-    date_of_birth: Optional[date]
-    account_type: Optional[int]
-#===========================================================
-
-""" RESPONSE SCHEMES """
-
-class CheckInLogResponse(BaseModel):
-    # Data about person who scanned and where
-    control_name: str
-    control_surname: str
-    hall: str
-
-    # Information about the member
-    card_id: str
-    name: str
-    surname: str
-
-    # Checkin date_time
-    date_time: datetime
-    class Config:
-        from_attributes = True
-#===========================================================
-
-""" Do not remember what was it
+""" USER MANAGEMENT:
+    Login | SignUp | Restore data [TBD] | Confirm email [TBD]
 """
-
-
-#===========================================================
-
-""" LOGIN
-"""
-class Req_LogIn(BaseModel):
-    """ Data to login into account
-    """
+class Req_LogIn_Username(BaseModel):
     username: str
     password: str
 
-class Resp_LogIn(BaseModel):
-    """ Data to return when user LogIn
-    """
+class Req_SignUp(BaseModel):
+    name: str
+    surname: str
+    email: str
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
+    username: str
+    password: str
+
+""" USER MANAGEMENT:
+    Members
+"""
+class Req_Members_Add(BaseModel):
+    name: str
+    surname: str
+    email: str
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
+    account_type: int
+    send_welcome_email: Optional[bool] = True
+    send_welcome_mms: Optional[bool]
+
+class Resp_Members_Inst(BaseModel):
     card_id: str
     name: str
     surname: str
     email: str
-    account_type: int
-
     phone_number: Optional[str]
     date_of_birth: Optional[date]
+    registration_date: date
+    account_type: int
+    privileges: Optional[str]
+    last_checkin_success: Optional[bool]
+    last_checkin_datetime: Optional[datetime]
     token: Optional[str]
-    activated: Optional[bool]
+    activated: bool
 
     class Config:
         from_attributes = True
-    
-class Exception_LogIn(BaseModel):
-    """ [TBD] - tested in the future
-    """
-    detail: str
 #===========================================================
 
-""" ADD || REGISTER NEW MEMBER
+""" EXTERNAL PROVIDERS
+    (External payment methods)
 """
-class Req_AddNewMember(BaseModel):
-    """ Data to provide on add member
-    """
+class Req_Create_ExternalProviders(BaseModel):
     name: str
-    surname: str
-    email: str
-    account_type: int
+    description: Optional[str]
+    is_partial_payment: bool
+    partial_payment: Optional[Decimal]
 
-    phone_number: Optional[str]
-    date_of_birth: Optional[date]
+class Resp_Instance_ExternalProviders(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    is_partial_payment: bool
+    partial_payment: Optional[Decimal] = None
+    is_deleted: bool
 
-    send_welcome_email: Optional[bool] = True  # Decides if welcome email will be sent to a new member
-    send_welcome_mms: Optional[bool] = False   # Decides if welcome MMS will be sent to a new member [TBD]
-class Resp_AddNewMember(BaseModel):
-    """ [Not used at the moment]
-        Response when member was added
-    """
-    status: str = "OK"
-    message: str = "New member was created"
-
-    card_id: str
-    
     class Config:
         from_attributes = True
 
-class Req_ConfirmMail(BaseModel):
-    pass
-class Resp_ConfirmMail(BaseModel):
-    pass
+class Req_Update_ExternalProviders(BaseModel):
+    id: int
+    name: Optional[str]
+    description: Optional[str]
+    is_partial_payment: bool
+    partial_payment: Optional[Decimal]
+
+""" PASS TYPES
+"""
+class Req_PassTypes_Create(BaseModel):
+    name: str
+    description: Optional[str]
+    price: Decimal
+    validity_days: Optional[int]
+    maximum_entries: Optional[int]
+    requires_external_auth: bool
+    external_provider_name: Optional[str]
+    external_provider_id: Optional[int]
+    is_ext_event_pass: bool
+    ext_event_code: Optional[str]
+
+class Resp_PassTypes_Inst(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    price: Decimal
+    validity_days: Optional[int]
+    maximum_entries: Optional[int]
+    requires_external_auth: bool
+    external_provider_name: Optional[str]
+    external_provider_id: Optional[int]
+    is_ext_event_pass: bool
+    ext_event_code: Optional[str]
+    is_deleted: bool
+    delete_date: Optional[datetime]
+
     class Config:
         from_attributes = True
 
-#===========================================================
-
-""" MEMBER: INFO, UPDATE, ETC
-"""
-class Resp_MemberInfo(BaseModel):
-    """ Represents data about the user requested from the data base
-    """
+class Req_PassTypes_Update(BaseModel):
+    id: int
     name: str
-    surname: str
-    email: str
-    phone_number: Optional[str]
-    date_of_birth: Optional[date]
+    description: Optional[str]
+    price: Decimal
+    validity_days: Optional[int]
+    maximum_entries: Optional[int]
+    requires_external_auth: bool
+    external_provider_name: Optional[str]
+    external_provider_id: Optional[int]
+    is_ext_event_pass: bool
+    ext_event_code: Optional[str]
 
-    account_type: int
-    pass_type: int
-    entrances_left: int
+""" MEMBER PASS
+"""
+class Req_MemberPass_Add(BaseModel):
+    member_card_id: str
+    pass_type_id: int
+
+class Resp_MemberPass_Inst(BaseModel):
+    id: int
+    member_card_id: str
+    pass_type_id: int
+    pass_type_name: str
+    purchase_date: date
     expiration_date: Optional[date]
-
-    last_check_in: Optional[datetime]
+    entries_left: Optional[int]
+    requires_external_auth: bool
+    external_provider_id: Optional[int]
+    external_provider_name: Optional[str]
+    is_ext_event_pass: bool
+    ext_event_code: Optional[str]
+    status: Optional[str]
+    is_closed: bool
 
     class Config:
-            from_attributes = True
-
-class Req_Member_UpdatePass(BaseModel):
-    """ Allows to update information about member`s pass  
-    """
-    card_id: str
-    pass_type: int
-
-class Resp_Member_UpdatePass(BaseModel):
-    pass_type: int
-    entrances_left: int
-    expiration_date: date
-    
-    class Config:
-            from_attributes = True
+        from_attributes = True
 #===========================================================
 
-""" CHECKIN
+""" LOGS:
+    CheckIns
 """
-class Req_Checkin(BaseModel):
-    """ Data to register checkin
+class Req_CheckIn_Add(BaseModel):
+    validated_by_card_id: Optional[str]
+    external_provider_id: Optional[int]
+    member_card_id: str
 
-    card_id - member`s identification
-    hall    - place where class was
-    external_payment: was member pay for this class.
-    pass_type - what type of pass was used to enter the class
-        None -> internall (Previousely bought) pass was used
-        othervise -> some external payment system was used. 
-    """
+class Resp_ChecIn_Inst(BaseModel):
+    id: int
+    validated_by_card_id: Optional[str]
+    validated_by_name: Optional[str]
+    validated_by_surnamename: Optional[str]
+    hall: Optional[str]
+    member_pass_id: Optional[int]
+    pass_id: Optional[int]
+    pass_name: Optional[str]
+    is_ext_event_pass: Optional[bool]
+    ext_event_code: Optional[str]
+    external_provider_id: Optional[int]
+    external_provider_name: Optional[str]
+    member_card_id: str
+    member_name: str
+    member_surname: str
+    date_time: datetime
+    is_successful: bool
+    rejected_reason: Optional[str]
 
-    card_id: str
-    hall: Optional[str] = "Impakt"
-    external_payment: Optional[bool] = False
-    pass_type: Optional[int] = None
+    class Config:
+        from_attributes = True
 #===========================================================
 
 """ STATISTICS
 """
-class Req_Statistics_Admin_CheckInsByType_All(BaseModel):
-    """ Used to request more-or-less detailed data about all checkins made by
-        all instructors 
-    """
-    date_time_min: datetime
-    date_time_max: datetime
+class Req_Statistics_InstructorsCheckIns(BaseModel):
+    date_from: date
+    date_to: date
 
-class Resp_Statistics_Admin_CheckInsByType(BaseModel):
-    """ Used to represent sorted response of how many entries did an instructor
-        in a period of time. 
-    """
-    name: str = ""
-    surname: str = ""
-    entries_pass: int = 0
-    entries_pzu: int = 0
-    entries_medicover: int = 0
-    entries_multisport: int = 0
-    entries_other: int = 0
-    entries_total: int = 0
-    
-    class Config:
-            from_attributes = True
+class Resp_Statistics_InstructorsCheckIns(BaseModel):
+    validated_by_card_id: str
+    validated_by_name: str
+    validated_by_surnamename: str
+    count: int
+
+class Req_Statistics_InstructorCheckInsDetailed(BaseModel):
+    validated_by_card_id: str
+    date_from: date
+    date_to: date
+    page: Optional[int]
+    page_size: Optional[int] = 50
+
+class Resp_Statistics_InstructorCheckInsDetailed(BaseModel):
+    name: str
+    surname: str
+    date_time: datetime
+    is_successful: bool
+    rejected_reason: Optional[str]
+
+class Resp_Paginated_Statistics_InstructorCheckInsDetailed(BaseModel):
+    total: int          # Total items in DB
+    page: int           # Current page
+    page_size: int      # Items per page
+    remaining: int      # How many are left
+    items: List[Resp_Statistics_InstructorCheckInsDetailed]
 #===========================================================
