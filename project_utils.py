@@ -1,6 +1,8 @@
 # Generic packages
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 import os
 import dotenv
 import random
@@ -417,4 +419,20 @@ def send_confirmation_email(to_email: str, key: str):
         smtp.starttls()  # Often required, depending on provider
         smtp.login(env["ROOT_EMAIL"], env["ROOT_EMAIL_APP_PASS"])
         smtp.send_message(msg)
+
+def send_mail(to_email, subject, content):
+    message = Mail(
+        from_email='your_verified_sender@email.com',
+        to_emails=to_email,
+        subject=subject,
+        html_content=content
+    )
+    try:
+        sg = SendGridAPIClient(os.environ['SENDGRID_API_KEY'])
+        response = sg.send(message)
+        print(f"Email sent! Status code: {response.status_code}")
+        return True
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return False
 #===========================================================
