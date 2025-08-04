@@ -138,6 +138,8 @@ def load_environment_variables() -> None:
     env["SECRET_SALT"] = os.getenv("SECRET_SALT")
 
     env["BACKEND_ADDRESS"] = os.getenv("BACKEND_ADDRESS")
+
+    env["SENDGRID_KEY"] = os.getenv("SENDGRID_KEY")
 #===========================================================
 
 """ DATABASE RELATED ACTIONS """
@@ -330,7 +332,9 @@ def generate_qr_code_member(member: Member) -> Path:
     return generate_qr_code(member.card_id, member.name, member.surname,
                             fill_color=fill_color, back_color=back_color)
 
-""" EMAIL """
+""" EMAIL
+    [SMTP, SendGrid] 
+"""
 def send_welcome_email(email_to: str, 
                        name: str, surname: str,
                        login: str, password: str,
@@ -414,25 +418,99 @@ def send_confirmation_email(to_email: str, key: str):
     msg.attach(MIMEText(body, "plain"))
 
     # Send email
-    smtp_port = 2525
+    smtp_port = 465
     with smtplib.SMTP("smtp.gmail.com", smtp_port, timeout=10) as smtp:
         smtp.starttls()  # Often required, depending on provider
         smtp.login(env["ROOT_EMAIL"], env["ROOT_EMAIL_APP_PASS"])
         smtp.send_message(msg)
 
-def send_mail(to_email, subject, content):
+def SendGrid_send_welcome_email(email_to: str, 
+                                name: str, surname: str,
+                                login: str, password: str,
+                                qr_path: Path, template: Path = None) -> None:
+
+    # Ensure email template is not null
+    if not template:
+        template = Path(PATH_TEMPLATES, "welcome_email_template_Member.txt")
+
+    # Get email body from file
+    with open(template, 'r', encoding='utf-8') as file:
+        # Read template
+        email_body = file.read()
+
+        # Replace key words
+        replacement = [
+            ("{name}", name),
+            ("{surname}", surname),
+            ("{login}", login),
+            ("{password}", password),
+        ]
+        for key_word, value in replacement:
+            email_body = email_body.replace(key_word, value)
+
+    # Assemble message
+    msg = Mail(
+        from_email=env["ROOT_EMAIL"],
+        to_emails=email_to,
+        subject="Welcome to Impakt",
+        html_content=email_body
+    )
+
+    # Add QR as an attachment
+    with open(qr_path, 'rb') as qr:
+        qr_image = qr.read()
+        msg.add_attachment(qr_image, maintype='image', subtype='png', filename=qr_path.name)
+
+    # Send email
+    try:
+        sg = SendGridAPIClient(env["SENDGRID_KEY"])
+        sg.send(msg)
+        return True
+    except Exception as e:
+        return False
+
+def SendGrid_send_welcome_email_member(member: Member, 
+                              qr_path: Path, password: str) -> None:
+    
+    # Choose appropriate template based on member role
+    match AccountType(member.account_type):
+        case AccountType.ADMIN:
+            template = Path(PATH_TEMPLATES, "welcome_email_template_Admin.txt")
+        case AccountType.INSTRUCTOR:
+            template = Path(PATH_TEMPLATES, "welcome_email_template_Instructor.txt")
+        case AccountType.MEMBER:
+            template = Path(PATH_TEMPLATES, "welcome_email_template_Member.txt")
+        case _:
+            template = Path(PATH_TEMPLATES, "welcome_email_template_Member.txt")
+         
+    # Member contain only hass password --> raw pass should be provided explicetely
+    SendGrid_send_welcome_email(member.email,
+                                member.name, member.surname,
+                                member.username, password, 
+                                qr_path, template)
+
+def SendGrid_send_confirmation_mail(to_email, key: str):
+    url = env["BACKEND_ADDRESS"]
+    confirm_url = f"{url}/confirm/{key}"
+    content = f"""
+        Thanks for signing up!
+
+        Please open this link to confirm (expires in 6 hours):
+        {confirm_url}
+
+        If you didn’t request this, ignore this email.
+    """
+
     message = Mail(
-        from_email='maksym.torhunakov@gmail.com',
+        from_email=env["ROOT_EMAIL"],
         to_emails=to_email,
-        subject=subject,
+        subject="Confirm your Impact Studio account",
         html_content=content
     )
     try:
-        sg = SendGridAPIClient("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")
-        response = sg.send(message)
-        print(f"Email sent! Status code: {response.status_code}")
+        sg = SendGridAPIClient(env["SENDGRID_KEY"])
+        sg.send(message)
         return True
     except Exception as e:
-        print(f"Error sending email: {e}")
         return False
 #===========================================================

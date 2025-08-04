@@ -122,7 +122,7 @@ def post_signup(req: Req_SignUp,
                             detail="Unexcpected error. Operation reverted")
 
     # Send confirmation mail
-    utils.send_confirmation_email(req.email, key)
+    utils.SendGrid_send_confirmation_mail(req.email, key)
 
     # Return data
     return {"details": "Confirmation link sent; please check your email."}
@@ -165,8 +165,8 @@ def get_confirm_email(key: str,
     # Generate QR --> Send welcome mail
     try:
         qr_path = utils.generate_qr_code_member(member=member)
-        utils.send_welcome_email_member(member=member, 
-                                        qr_path=qr_path, password="Confidential")
+        utils.SendGrid_send_welcome_email_member(member=member, 
+                                                 qr_path=qr_path, password="Confidential")
         db.commit()
         db.refresh(member)
     except SMTPServerDisconnected:
@@ -232,8 +232,8 @@ def post_members_add(req: Req_Members_Add,
     # Send an email with the QR Code. 
     if req.send_welcome_email:
         try:
-            utils.send_welcome_email_member(member=member, 
-                                            qr_path=qr_path, password=password)
+            utils.SendGrid_send_welcome_email_member(member=member, 
+                                                     qr_path=qr_path, password=password)
         except SMTPServerDisconnected:
             # Delete generated qr_code --> raise corresponding exception
             qr_path.unlink()
