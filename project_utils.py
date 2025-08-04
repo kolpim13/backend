@@ -422,13 +422,13 @@ def send_confirmation_email(to_email: str, key: str):
 
 def send_mail(to_email, subject, content):
     message = Mail(
-        from_email='your_verified_sender@email.com',
+        from_email='maksym.torhunakov@gmail.com',
         to_emails=to_email,
         subject=subject,
         html_content=content
     )
     try:
-        sg = SendGridAPIClient(os.environ['SENDGRID_API_KEY'])
+        sg = SendGridAPIClient("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")
         response = sg.send(message)
         print(f"Email sent! Status code: {response.status_code}")
         return True
