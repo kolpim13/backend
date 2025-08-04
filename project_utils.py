@@ -139,6 +139,7 @@ def load_environment_variables() -> None:
 
     env["BACKEND_ADDRESS"] = os.getenv("BACKEND_ADDRESS")
 
+    env["SENDGRID_MAIL"] = os.getenv("SENDGRID_MAIL")
     env["SENDGRID_KEY"] = os.getenv("SENDGRID_KEY")
 #===========================================================
 
