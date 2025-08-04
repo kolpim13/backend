@@ -450,16 +450,16 @@ def SendGrid_send_welcome_email(email_to: str,
 
     # Assemble message
     msg = Mail(
-        from_email=env["ROOT_EMAIL"],
+        from_email=env["SENDGRID_MAIL"],
         to_emails=email_to,
         subject="Welcome to Impakt",
         html_content=email_body
     )
-
+    
     # Add QR as an attachment
     with open(qr_path, 'rb') as qr:
         qr_image = qr.read()
-        msg.add_attachment(qr_image, maintype='image', subtype='png', filename=qr_path.name)
+        msg.add_attachment(qr_image)
 
     # Send email
     try:
@@ -502,7 +502,7 @@ def SendGrid_send_confirmation_mail(to_email, key: str):
     """
 
     message = Mail(
-        from_email=env["ROOT_EMAIL"],
+        from_email=env["SENDGRID_MAIL"],
         to_emails=to_email,
         subject="Confirm your Impact Studio account",
         html_content=content
