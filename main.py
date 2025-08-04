@@ -25,6 +25,13 @@ async def lifespan(app: FastAPI):
     print("Finish")
 #===========================================================
 
+utils.send_mail(
+    to_email="torgunakovmaks2@gmail.com",
+    subject="Hello from SendGrid + Python!",
+    content="<h1>It works 🎉</h1><p>This is a test email sent from FastAPI using SendGrid API.</p>"
+)
+
+
 """ START THE APPLICATION """
 # Load environment variables
 dotenv.load_dotenv()
