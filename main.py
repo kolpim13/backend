@@ -30,10 +30,10 @@ async def lifespan(app: FastAPI):
 dotenv.load_dotenv()
 
 # Prepare environment for work
+utils.load_environment_variables()
 utils.check_create_paths()
 utils.databases_init_tables()
 utils.check_create_root()
-utils.load_environment_variables()
 
 # FastAPI application to run --> add all routers
 app = FastAPI(title="Dance School Backend",

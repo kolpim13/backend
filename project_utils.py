@@ -1,4 +1,6 @@
 # Generic packages
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import os
 import dotenv
 import random
@@ -403,15 +405,16 @@ def send_confirmation_email(to_email: str, key: str):
 
         If you didn’t request this, ignore this email.
     """
-
-    msg = EmailMessage()
+    msg = MIMEMultipart()
     msg["Subject"] = "Confirm your Impact Studio account"
     msg["From"]    = env["ROOT_EMAIL"]
     msg["To"]      = to_email
-    msg.set_content(body)
+    msg.attach(MIMEText(body, "plain"))
 
     # Send email
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
+    smtp_port = 2525
+    with smtplib.SMTP("smtp.gmail.com", smtp_port, timeout=10) as smtp:
+        smtp.starttls()  # Often required, depending on provider
         smtp.login(env["ROOT_EMAIL"], env["ROOT_EMAIL_APP_PASS"])
         smtp.send_message(msg)
 #===========================================================

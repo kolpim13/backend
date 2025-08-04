@@ -1,0 +1,8 @@
+Dear {name} {surname},
+
+Your confirmation link can be found below:
+{confirmation_link}.
+If you did not registered on impakt.com --> ignore this email.
+
+Best Regards,
+Impakt
