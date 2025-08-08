@@ -115,7 +115,6 @@ def post_signup(req: Req_SignUp,
     # Protection against unexcpected situations during adding new user
     try:
         db.commit()
-        db.refresh(member)
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,

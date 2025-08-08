@@ -1,8 +1,9 @@
 # Generic packages
+import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+from sendgrid.helpers.mail import (Mail, Attachment, FileContent, FileName, FileType, Disposition)
 import os
 import dotenv
 import random
@@ -454,13 +455,21 @@ def SendGrid_send_welcome_email(email_to: str,
         from_email=env["SENDGRID_MAIL"],
         to_emails=email_to,
         subject="Welcome to Impakt",
-        html_content=email_body
+        plain_text_content=email_body
     )
     
-    # Add QR as an attachment
+    # Read QR from file --> add it as an attachment
     with open(qr_path, 'rb') as qr:
         qr_image = qr.read()
-        msg.add_attachment(qr_image)
+    encoded_qr_image = base64.b64encode(qr_image).decode()
+
+    attachment = Attachment(
+        FileContent(encoded_qr_image),
+        FileName("QRCode.png"),
+        FileType("image/gif"),
+        Disposition('attachment')
+    )
+    msg.add_attachment(attachment)
 
     # Send email
     try:
