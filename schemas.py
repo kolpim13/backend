@@ -50,6 +50,13 @@ class Resp_Members_Inst(BaseModel):
 
     class Config:
         from_attributes = True
+
+class Resp_Paginated_Members_Instances(BaseModel):
+    total: int          # Total items in DB
+    page: int           # Current page
+    page_size: int      # Items per page
+    remaining: int      # How many are left
+    items: List[Resp_Members_Inst]
 #===========================================================
 
 """ EXTERNAL PROVIDERS

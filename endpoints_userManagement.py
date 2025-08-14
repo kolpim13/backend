@@ -1,10 +1,9 @@
 import secrets
-import os
 from datetime import datetime, timedelta
 from smtplib import SMTPServerDisconnected
 from fastapi.responses import HTMLResponse
 from itsdangerous import URLSafeTimedSerializer
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Query, Depends, HTTPException, status
 from fastapi_utils.tasks import repeat_every
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, select
@@ -12,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from database import SessionLocal_Members
 from models import Member
-from schemas import Req_LogIn_Username, Req_Members_Add, Req_SignUp, Resp_Members_Inst
+from schemas import Req_LogIn_Username, Req_Members_Add, Req_SignUp, Resp_Members_Inst, Resp_Paginated_Members_Instances
 
 import project_utils as utils
 #===========================================================
@@ -115,6 +114,7 @@ def post_signup(req: Req_SignUp,
     # Protection against unexcpected situations during adding new user
     try:
         db.commit()
+        db.refresh(member)
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -261,7 +261,33 @@ def get_members_inst(member_id: str,
     member: Member = utils.get_member_by_card_id_with_raise(db, member_id)
     return member
 
-# /members/register
+@router.get("/members",
+            response_model=Resp_Paginated_Members_Instances,
+            summary="List of members with pagination")
+def get_members_instances(page: int = Query(0, ge=0, le=1000),
+                          page_size: int = Query(100, ge=1, le=200),
+                          db: Session = Depends(utils.get_db_members)):
+    query = (
+        db.query(Member)
+        .order_by(Member.registration_date)
+    )
 
-#
+    total: int = query.count()
+    remaining: int = max(0, total - page * page_size)
+
+    members: list[Member] = (
+        query
+        # .filter(Member.account_type != utils.AccountType.Root.value)
+        .offset(page * page_size)
+        .limit(page_size)
+        .all()
+    )
+    
+    return Resp_Paginated_Members_Instances(
+        total=total,
+        page=page,
+        page_size=page_size,
+        remaining=remaining,
+        items=members
+    )
 #===========================================================
