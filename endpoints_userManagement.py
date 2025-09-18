@@ -314,7 +314,7 @@ def get_members_instances(page: int = Query(0, ge=0, le=1000),
     )
 
     total: int = query.count()
-    remaining: int = max(0, total - page * page_size)
+    remaining: int = max(0, total - (page + 1) * page_size) # +1 to not multiply on 1
 
     members: list[Member] = (
         query
