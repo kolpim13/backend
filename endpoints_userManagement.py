@@ -1,7 +1,8 @@
 import secrets
 from datetime import datetime, timedelta
 from smtplib import SMTPServerDisconnected
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from itsdangerous import URLSafeTimedSerializer
 from fastapi import APIRouter, Query, Depends, HTTPException, status
 from fastapi_utils.tasks import repeat_every
@@ -177,6 +178,46 @@ def get_confirm_email(key: str,
 
     # Redirect to your real “account confirmed” page or show a message:
     return HTMLResponse("<h3>Your account has been confirmed. You may now log in.</h3>")
+
+@router.post("/api/signup",
+            status_code=status.HTTP_200_OK)
+async def signup_static_html_page(req: Req_SignUp,
+                                  db: Session = Depends(utils.get_db_members)):
+    
+    # Get member with given email
+    member: Member | None = db.execute(select(Member)\
+        .where(Member.email == req.email))\
+        .scalar_one_or_none()
+    
+    # Do not let register if email already exists
+    if member and member.activated:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Member with provided email already registered and confirmed")
+
+    # Hash the password
+    pwd_hash = utils.hash_string(req.password)
+
+    # Gather member data
+    member_data = req.model_dump()
+    member_data["password_hash"] = pwd_hash
+    member_data["expiration_time"] = datetime.now() + timedelta(hours=6)
+    member_data["activated"] = True # No confirmation email needed
+    member_data["token"] = None
+    member_data["key"] = None
+    member_data["card_id"] = utils.generate_qr_code_value(db)
+    member: Member = utils.get_member_from_dict(member_data)
+
+    # Add new member to a DB || protect from unexpected errors
+    try:
+        db.add(member)
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Unexcpected error. Operation reverted")
+    
+    # Return card id only - needed for QR code creation 
+    return { "message": "registered", "qr_text": member.card_id }
 
 @repeat_every(seconds=6*60*60)
 async def cleanup_unconfirmed_members() -> None:

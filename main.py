@@ -2,6 +2,8 @@ import time
 import dotenv
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+
 from contextlib import asynccontextmanager
 
 from endpoints_passes import router as router_passes
@@ -38,6 +40,11 @@ utils.check_create_root()
 # FastAPI application to run --> add all routers
 app = FastAPI(title="Dance School Backend",
               lifespan=lifespan)
+
+# Mount static pages under root
+app.mount("/static", StaticFiles(directory="static"), name="signup")
+
+# Add all API routers
 app.include_router(router_passes)
 app.include_router(router_user_management)
 app.include_router(router_logging)
