@@ -43,6 +43,7 @@ app = FastAPI(title="Dance School Backend",
 
 # Mount static pages under root
 app.mount("/static", StaticFiles(directory="static"), name="signup")
+app.mount("/static", StaticFiles(directory="static"), name="terms_and_agreement")
 
 # Add all API routers
 app.include_router(router_passes)
