@@ -8,14 +8,25 @@
     body { font-family: sans-serif; background: #f4f4f4; padding: 20px; }
     form { background: #fff; padding: 20px; border-radius: 8px; max-width: 320px; margin: auto; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
     label { display: block; margin-top: 10px; }
+    label.checkbox-inline {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
     input { width: 100%; margin-top: 4px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
+    
     button { width: 100%; margin-top: 15px; padding: 10px; border: none; border-radius: 4px; background: #4CAF50; color: white; font-size: 16px; cursor: pointer; }
     button:hover { background: #45a049; }
   </style>
 </head>
 <body>
   <form id="register-form">
-    <h2>Impakt Register</h2>
+    <h2>Impact registration page</h2>
 
     <label for="name">Name</label>
     <input type="text" id="name" name="name" required />
@@ -34,6 +45,14 @@
 
     <label for="confirmPassword">Confirm password</label>
     <input type="password" id="confirmPassword" name="confirmPassword" required />
+
+    <!-- Terms of agreement -->
+    <label class="checkbox-inline" required>
+      <input type="checkbox" name="news" required>
+      <a href="/static/status_as_screens_2.html" target="_blank">
+        I agree to the terms and conditions.
+      </a>
+    </label>
 
     <button id="submit-btn" type="submit">Sign-up</button>
 

@@ -52,3 +52,11 @@ sudo certbot --nginx
 
 # Find and kill process
 sudo lsof -i :8000 --> sudo kill -9 12345
+
+# How to place link on a registration age
+<label class="checkbox-inline">
+      <input type="checkbox" name="news">
+      <a href="/projects/impakt/backend/static/terms_and_agreement.html" target="_blank">
+        I agree to the terms and conditions.
+      </a>
+    </label>
