@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from database import SessionLocal_Members
 from models import Member
-from schemas import Req_LogIn_Username, Req_Members_Add, Req_SignUp, Resp_Members_Inst, Resp_Paginated_Members_Instances
+from schemas import Req_LogIn_Username, Req_Members_Add, Req_Members_ChangePassword, Req_Members_ChangePrivileges, Req_Members_Put, Req_SignUp, Resp_Members_Inst, Resp_Paginated_Members_Instances
 
 import project_utils as utils
 #===========================================================
@@ -55,12 +55,12 @@ def post_login_by_username(login_data: Req_LogIn_Username,
         .scalar_one_or_none()
 
     if member is None:
-        raise HTTPException(status_code=401,
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Wrong username")
     
     is_password_correct = utils.verify_hash(login_data.password, member.password_hash)
     if not is_password_correct:
-        raise HTTPException(status_code=401,
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Wrong password")
     
     # Return user info
@@ -286,6 +286,115 @@ def post_members_add(req: Req_Members_Add,
     db.refresh(member)
 
     # return from the function
+    return member
+
+@router.delete("/members/{id}")
+def delete_members_inst(id: str,
+                        db: Session = Depends(utils.get_db_members)):
+    member = db.query(Member).filter(Member.card_id == id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Member with given id was not found in database.")
+
+    db.delete(member)
+    db.commit()
+    
+    return {"status": status.HTTP_204_NO_CONTENT}
+
+@router.put("/members",
+            response_model=Resp_Members_Inst,
+            response_model_exclude_none=True,
+            response_model_exclude_unset=True,
+            status_code=status.HTTP_200_OK)
+def put_members_inst(req: Req_Members_Put,
+                     db: Session = Depends(utils.get_db_members)):
+    """ Modify existing member`s data
+
+        * Authentication mechanism to be added
+    """
+    member = db.query(Member).filter(Member.card_id == req.card_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Member with given id was not found in database.")
+    
+    # Update member`s data --> write them to db --> return updated member`s data.
+    result = utils.update_member_based_on_dict(member, req.model_dump())
+    if not result:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No valid data was provided to upadte the member")
+
+    db.commit()
+    db.refresh(member)
+    return member
+    
+@router.put("/members/password")
+def put_members_change_password(req: Req_Members_ChangePassword,
+                                db: Session = Depends(utils.get_db_members)):
+    """ Change passwrod of existing member
+
+        * Authentication mechanism to be added
+    """
+    member = db.query(Member).filter(Member.card_id == req.card_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Member with given id was not found in database.")
+    
+    # Verify that old password is given correctly
+    old_password_correct = utils.verify_hash(req.old_password, member.password_hash)
+    if not old_password_correct:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Wrong previous password.")
+    
+    # Cange password --> save changes into DB
+    new_pass_hash = utils.hash_string(req.new_password)
+    member.password_hash = new_pass_hash
+    
+    db.commit()
+    db.refresh(member)
+
+    return {"status": status.HTTP_200_OK}
+
+@router.put("/members/privilages/{id}",
+            response_model=Resp_Members_Inst,
+            response_model_exclude_none=True,
+            response_model_exclude_unset=True,
+            status_code=status.HTTP_200_OK)
+def put_members_change_privilages(id: str,
+                                  req: Req_Members_ChangePrivileges,
+                                  db: Session = Depends(utils.get_db_members)):
+    """ Modify privileges of an existing member
+
+        * For now is only applied on a role (account type).
+        * Authentication mechanism to be added
+    """
+
+    # Check if user requests change exists.
+    user = db.query(Member).filter(Member.card_id == id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="User requesting change of privilage was not found.")
+
+    # Ensure that member exists --> If member we try to change privilege is root - reject
+    member = db.query(Member).filter(Member.card_id == req.card_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Member with given id was not found in database.")
+    
+    # Ensure that user requests privilage change has enough rights
+    if user.account_type not in [utils.AccountType.ROOT.value, utils.AccountType.ADMIN.value]:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="User requesting change of privilage has to be an administrator.")
+    
+    # If user`s account has less or same valuable role than member - reject
+    if ((user.account_type <= member.account_type) or
+        (user.account_type <= req.account_type)):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="User can not modify a member with account of same or higher privileges")
+
+    # Update privilages -> write changes into database --> return updated member
+    member.account_type = req.account_type
+    db.commit()
+    db.refresh(member)
     return member
 
 @router.get("/members/{member_id}",

@@ -157,6 +157,20 @@ def dict_to_Member(member_dict: dict) -> Member:
 
     return Member(**cleaned_data)
 
+def update_member_based_on_dict(member: Member, update_data: dict) -> bool:
+    """ Update member`s instance using dictionary, previousely filtering the values in it. 
+
+        Returns: True - if smth was updated, False - if no data can be written.
+    """
+    filtered_update_data = filter_kwargs_for_class(Member, update_data)
+    if not filtered_update_data:
+        return False
+    
+    for key, value in filtered_update_data.items():
+        setattr(member, key, value)
+        
+    return True
+
 def get_member_from_dict(member: dict) -> Member:
     """ Function is used to construct member from a req schema.
         All unset fields will be set with default values. 
@@ -245,7 +259,7 @@ def get_random_string(len: int) -> str:
     return ''.join(random.choice(string.ascii_lowercase + string.ascii_uppercase + string.digits) for _ in range(len))
 
 def filter_kwargs_for_class(cls, data: dict):
-    """ Takes a dictionary and leaves only key and respective keys related to a provided class 
+    """ Takes a dictionary and leaves only keys and respective values related to a provided class 
     """
     valid_keys = cls.__table__.columns.keys()
     return {k: v for k, v in data.items() if k in valid_keys and k != 'self'}

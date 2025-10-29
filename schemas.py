@@ -33,6 +33,24 @@ class Req_Members_Add(BaseModel):
     send_welcome_email: Optional[bool] = True
     send_welcome_mms: Optional[bool]
 
+class Req_Members_Put(BaseModel):
+    card_id: str
+    name: Optional[str]
+    surname: Optional[str]
+    phone_number: Optional[str]
+    date_of_birth: Optional[date]
+    username: Optional[str]
+
+class Req_Members_ChangePassword(BaseModel):
+    card_id: str
+    old_password: str
+    new_password: str
+
+class Req_Members_ChangePrivileges(BaseModel):
+    card_id: str
+    account_type: int
+    privileges: Optional[str]
+
 class Resp_Members_Inst(BaseModel):
     card_id: str
     name: str
