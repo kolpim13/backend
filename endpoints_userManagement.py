@@ -288,13 +288,28 @@ def post_members_add(req: Req_Members_Add,
     # return from the function
     return member
 
-@router.delete("/members/{id}")
-def delete_members_inst(id: str,
+@router.delete("/members/{user_id}_{member_id}")
+def delete_members_inst(user_id: str,
+                        member_id: str,
                         db: Session = Depends(utils.get_db_members)):
-    member = db.query(Member).filter(Member.card_id == id).first()
+    
+    user = db.query(Member).filter(Member.card_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="User with given id was not found in database.")
+            
+    member = db.query(Member).filter(Member.card_id == member_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Member with given id was not found in database.")
+
+    if user.account_type not in (utils.AccountType.ROOT.value, utils.AccountType.ADMIN.value):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="User requesting deletion of an account has to be an administrator.")
+    
+    if user.account_type <= member.account_type:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="User can not delete accout of a member with same or higher privileges")
 
     db.delete(member)
     db.commit()
@@ -354,7 +369,7 @@ def put_members_change_password(req: Req_Members_ChangePassword,
 
     return {"status": status.HTTP_200_OK}
 
-@router.put("/members/privilages/{id}",
+@router.put("/members/privileges/{id}",
             response_model=Resp_Members_Inst,
             response_model_exclude_none=True,
             response_model_exclude_unset=True,
