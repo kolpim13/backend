@@ -367,7 +367,7 @@ def send_welcome_email(email_to: str,
 
     # Assemble message
     msg = EmailMessage()
-    msg['Subject'] = "Welcome to Impakt"
+    msg['Subject'] = "Welcome to Impact"
     msg['From'] = email_from
     msg['To'] = email_to
     msg.set_content(email_body)

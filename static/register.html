@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Impact Dance School – Rejestracja</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="brand" style="display:flex;align-items:center;gap:10px;">
+      <a href="index.html"><img class="logo" src="assets/logo_1.jpg" alt="Logo Impact Dance School"></a>
+      <div>
+        <h1>Impact Dance School</h1>
+        <small>Polska, Częstochowa</small>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="index.html">Strona główna</a>
+      <a class="primary" href="login.html">Zaloguj się</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <h2 style="margin:0 0 10px 0;color:var(--black)">Utwórz konto</h2>
+      <form onsubmit="event.preventDefault(); validateMatch();">
+        <div>
+          <label for="name">Imię i nazwisko</label>
+          <input id="name" type="text" placeholder="Jan Kowalski" required>
+        </div>
+        <div>
+          <label for="email">Adres e-mail</label>
+          <input id="email" type="email" placeholder="adres@example.com" required>
+        </div>
+        <div>
+          <label for="password">Hasło</label>
+          <input id="password" type="password" placeholder="Co najmniej 6 znaków" required minlength="6">
+        </div>
+        <div>
+          <label for="confirm">Powtórz hasło</label>
+          <input id="confirm" type="password" placeholder="Wpisz ponownie hasło" required minlength="6">
+        </div>
+        <button type="submit">Zarejestruj się</button>
+        <p class="helper">Masz już konto? <a class="link" href="login.html">Zaloguj się</a>.</p>
+      </form>
+    </div>
+  </main>
+
+  <footer class="footer">
+    © <span id="year"></span> Impact Dance School
+  </footer>
+
+  <script>
+    // Check password match
+    function validateMatch(){
+      const pass1 = document.getElementById('password').value;
+      const pass2 = document.getElementById('confirm').value;
+      if(pass1 !== pass2){
+        alert('Hasła nie są takie same.');
+      } else {
+        alert('To tylko wersja demonstracyjna – podłącz backend, aby zapisać dane.');
+      }
+    }
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

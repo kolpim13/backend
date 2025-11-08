@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Impact Dance School – Home</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="brand" style="display:flex;align-items:center;gap:10px;">
+      <img class="logo" src="assets/logo_1.jpg" alt="Impact Dance School logo">
+      <div>
+        <h1>Impact Dance School</h1>
+        <small>Polska, Częstochowa</small>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="login.html">Logowanie</a>
+      <a class="primary" href="register.html">Rejestracja</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card" style="text-align:center;">
+      <h2 style="color:var(--black);margin-top:0;">Welcome to Impact Dance School!</h2>
+      <p style="font-size:1.05rem;max-width:600px;margin:10px auto;color:#444;">
+        Budujemy coś ekscytującego! Już wkrótce to miejsce stanie się domem naszej internetowej społeczności tanecznej.
+        Na razie prezentujemy nasz plan zajęć i serdecznie witamy wszystkich miłośników tańca.
+      </p>
+
+      <img src="assets/schedule_11-2025.jpg" alt="Class Schedule" style="width:100%;max-width:700px;border:4px solid var(--orange);border-radius:12px;margin:20px 0;">
+
+      <p style="color:#666;">
+        Wróć wkrótce, żeby zobaczyć więcej!
+        Możesz <a class="link" href="register.html">założyć konto</a> or
+        <a class="link" href="login.html">zalogować się</a> aby pozostać w kontakcie.
+      </p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    © <span id="year"></span> Impact Dance School • All rights reserved
+  </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

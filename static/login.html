@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Impact Dance School – Login</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <a href="index.html"><img class="logo" src="assets/logo_1.jpg" alt="Impact Dance School logo"></a>
+    <div class="brand">
+      <h1>Impact Dance School</h1>
+      <small>Polska, Częstochowa</small>
+    </div>
+    <nav class="nav">
+      <a href="index.html">Strona główna</a>
+      <a class="primary" href="register.html">Rejestracja</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <h2 style="margin:0 0 6px 0;color:var(--maroon)">Log in</h2>
+      <form onsubmit="event.preventDefault(); alert('Demo only – hook this up to your backend.');">
+        <div>
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="you@example.com" required>
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input id="password" type="password" placeholder="••••••••" required minlength="6">
+        </div>
+        <button type="submit">Log in</button>
+        <p class="helper">No account? <a class="link" href="register.html">Create one</a>.</p>
+      </form>
+    </div>
+  </main>
+
+  <footer class="footer">
+    © <span id="year"></span> Impact Dance School
+  </footer>
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
