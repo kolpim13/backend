@@ -230,7 +230,7 @@ async def signup_static_html_page(req: Req_SignUp,
     #                                          password=req.password)
 
     # Return card id only - needed for QR code creation 
-    return { "message": "registered", "qr_text": member.card_id }
+    return { "message": "registered", "card_id": member.card_id }
 
 @repeat_every(seconds=6*60*60)
 async def cleanup_unconfirmed_members() -> None:
@@ -345,14 +345,14 @@ def get_members_instances(page: int = Query(0, ge=0, le=1000),
         items=members
     )
 
-@router.get("members/{member_id}")
+@router.get("/members/qr/{member_id}")
 def get_members_qr_as_png(member_id: str,
                           db: Session = Depends(utils.get_db_members)):
     # Check member with given ID exists
     member: Member = utils.get_member_by_card_id_with_raise(db, member_id)
 
     # Check QR code is stored --> create if not
-    qr_path = Path(utils.PATH_QR_CODES, member_id)
+    qr_path = Path(utils.PATH_QR_CODES, member_id).with_suffix(".png")
     if qr_path.exists() is False:
         # Create QR code
         pass

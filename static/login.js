@@ -1,7 +1,7 @@
 function loginToIndex(card_id) {
-    try { sessionStorage.setItem('card_id', card_id); } catch {}
-    location.href = 'index.html';
-  }
+  try { sessionStorage.setItem('card_id', card_id); } catch {}
+  location.href = 'index.html';
+}
 
 const form = document.getElementById("login-form");
 form.addEventListener("submit", async (e) => {

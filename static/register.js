@@ -32,6 +32,11 @@
     return msg;
   };
 
+  function loginToIndex(card_id) {
+    try { sessionStorage.setItem('card_id', card_id); } catch {}
+    location.href = 'index.html';
+  }
+
   const clearError = (input) => {
     const msg = input.parentElement.querySelector(".field-error");
     if (msg) msg.textContent = "";
@@ -222,7 +227,7 @@
         else
         {
           // Navigate to main(index) page
-          // ...
+          loginToIndex(data.card_id);
         }
         // showNotification('Użytkownik został zarejestrowany', "success");
 
