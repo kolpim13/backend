@@ -355,7 +355,7 @@ def get_members_qr_as_png(member_id: str,
     qr_path = Path(utils.PATH_QR_CODES, member_id).with_suffix(".png")
     if qr_path.exists() is False:
         # Create QR code
-        pass
+        qr_path = utils.generate_qr_code_member(member)
 
     # return QR as an image
     return FileResponse(
