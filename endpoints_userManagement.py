@@ -1,4 +1,5 @@
 import secrets
+from pathlib import Path
 from datetime import datetime, timedelta
 from smtplib import SMTPServerDisconnected
 from fastapi.responses import FileResponse, HTMLResponse
@@ -78,7 +79,9 @@ def post_signup(req: Req_SignUp,
     
     # Check if member already registered
     member: Member | None = db.execute(select(Member)\
-        .where(Member.email == req.email))\
+        .where(or_(
+            Member.email == req.email,
+            Member.username == req.username)))\
         .scalar_one_or_none()
     
     if member and member.activated:
@@ -186,7 +189,9 @@ async def signup_static_html_page(req: Req_SignUp,
     
     # Get member with given email
     member: Member | None = db.execute(select(Member)\
-        .where(Member.email == req.email))\
+        .where(or_(
+            Member.email == req.email,
+            Member.username == req.username)))\
         .scalar_one_or_none()
     
     # Do not let register if email already exists
@@ -216,6 +221,14 @@ async def signup_static_html_page(req: Req_SignUp,
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Unexcpected error. Operation reverted")
     
+    # Generate QR code
+    qr_path = utils.generate_qr_code_member(member)
+
+    # Send welcome mail
+    # utils.SendGrid_send_welcome_email_member(member=member, 
+    #                                          qr_path=qr_path,
+    #                                          password=req.password)
+
     # Return card id only - needed for QR code creation 
     return { "message": "registered", "qr_text": member.card_id }
 
@@ -330,5 +343,25 @@ def get_members_instances(page: int = Query(0, ge=0, le=1000),
         page_size=page_size,
         remaining=remaining,
         items=members
+    )
+
+@router.get("members/{member_id}")
+def get_members_qr_as_png(member_id: str,
+                          db: Session = Depends(utils.get_db_members)):
+    # Check member with given ID exists
+    member: Member = utils.get_member_by_card_id_with_raise(db, member_id)
+
+    # Check QR code is stored --> create if not
+    qr_path = Path(utils.PATH_QR_CODES, member_id)
+    if qr_path.exists() is False:
+        # Create QR code
+        pass
+
+    # return QR as an image
+    return FileResponse(
+        path=qr_path,
+        media_type="image/png",
+        filename=qr_path.name,
+        headers={"Cache-Control": "public, max-age=3600"} # Cachisng
     )
 #===========================================================

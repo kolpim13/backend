@@ -5,14 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Impact Dance School – Login</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="login.js" defer></script>
 </head>
 <body>
   <header class="header">
-    <a href="index.html"><img class="logo" src="assets/logo_1.jpg" alt="Impact Dance School logo"></a>
-    <div class="brand">
-      <h1>Impact Dance School</h1>
-      <small>Polska, Częstochowa</small>
+    <div class="brand" style="display:flex;align-items:center;gap:10px;">
+      <img class="logo" src="assets/logo_1.jpg" alt="Impact Dance School logo">
+      <div>
+        <h1>Impact Dance School</h1>
+        <small>Polska, Częstochowa</small>
+      </div>
     </div>
+
     <nav class="nav">
       <a href="index.html">Strona główna</a>
       <a class="primary" href="register.html">Rejestracja</a>
@@ -22,24 +26,31 @@
   <main class="container">
     <div class="card">
       <h2 style="margin:0 0 6px 0;color:var(--maroon)">Log in</h2>
-      <form onsubmit="event.preventDefault(); alert('Demo only – hook this up to your backend.');">
+
+      <form id="login-form">
         <div>
-          <label for="email">Email</label>
-          <input id="email" type="email" placeholder="you@example.com" required>
+          <label for="username">Username</label>
+          <input id="username" type="text" placeholder="your username" required>
         </div>
         <div>
           <label for="password">Password</label>
-          <input id="password" type="password" placeholder="••••••••" required minlength="6">
+          <input id="password" type="password" placeholder="••••••••">
         </div>
-        <button type="submit">Log in</button>
+        <button id="submit-btn" type="submit">Log in</button>
         <p class="helper">No account? <a class="link" href="register.html">Create one</a>.</p>
       </form>
+
+      <!-- Notification banner -->
+      <p id="login-notice" class="form-notice hidden" role="alert" aria-live="polite">
+        Some Shit
+      </p>
     </div>
   </main>
 
   <footer class="footer">
     © <span id="year"></span> Impact Dance School
   </footer>
+
   <script>
     document.getElementById('year').textContent = new Date().getFullYear();
   </script>

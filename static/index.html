@@ -15,6 +15,7 @@
         <small>Polska, Częstochowa</small>
       </div>
     </div>
+
     <nav class="nav">
       <a href="login.html">Logowanie</a>
       <a class="primary" href="register.html">Rejestracja</a>
@@ -36,6 +37,17 @@
         Możesz <a class="link" href="register.html">założyć konto</a> or
         <a class="link" href="login.html">zalogować się</a> aby pozostać w kontakcie.
       </p>
+
+      <!-- User QR (shown only for logged-in users) -->
+      <section id="user-qr" class="qr-section" aria-labelledby="user-qr-title" hidden>
+        <div class="qr-inner">
+          <h3 id="user-qr-title">Twój kod QR</h3>
+          <img class="qr-image" alt="Twój kod QR" width="220" height="220" loading="lazy">
+          <p class="qr-caption">
+            <a id="user-qr-download" class="link" href="#" download="qr.png">Pobierz kod QR</a>
+          </p>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -43,6 +55,7 @@
     © <span id="year"></span> Impact Dance School • All rights reserved
   </footer>
 
+  <script src="index.js" defer></script>
   <script>
     document.getElementById('year').textContent = new Date().getFullYear();
   </script>

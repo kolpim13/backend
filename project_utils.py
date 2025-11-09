@@ -13,9 +13,8 @@ from datetime import date
 from enum import Enum
 
 # Poject-specific / Specialized packages
+from PIL import Image, ImageDraw
 import PIL
-import PIL.Image
-import PIL.ImageDraw
 import PIL.ImageFont
 from argon2 import PasswordHasher
 import argon2
@@ -89,7 +88,7 @@ def check_create_root(db: Session = SessionLocal_Members()) -> bool:
                                          root.name, root.surname)
 
         # Send QR Code via email on self email address
-        if env["ROOT_SEND_WELCOME_EMAIL"] == "True":
+        if env["SEND_WELCOME_EMAIL"] == "True":
             send_welcome_email_member(member=root,
                                       qr_path=qr_code,
                                       password=password)
@@ -126,10 +125,16 @@ def load_environment_variables() -> None:
     env["ROOT_LOGIN"] = os.getenv("ROOT_LOGIN")
     env["ROOT_PASS"] = os.getenv("ROOT_PASS")
     env["ROOT_EMAIL"] = os.getenv("ROOT_EMAIL")
-    env["ROOT_EMAIL_APP_PASS"] = os.getenv("ROOT_EMAIL_APP_PASS")
 
     env["SEND_WELCOME_EMAIL"] = os.getenv("SEND_WELCOME_EMAIL")
-    env["ROOT_SEND_WELCOME_EMAIL"] = os.getenv("ROOT_SEND_WELCOME_EMAIL")
+    env["EMAIL_APP_PASS"] = os.getenv("EMAIL_APP_PASS")
+    env["SENDGRID_MAIL"] = os.getenv("SENDGRID_MAIL")
+    env["SENDGRID_KEY"] = os.getenv("SENDGRID_KEY")
+
+    env["GENERATE_QR_CODE_FOR_NEW_USER"] = os.getenv("GENERATE_QR_CODE_FOR_NEW_USER")
+    env["QR_ADD_FULL_NAME"] = os.getenv("QR_ADD_FULL_NAME")
+    env["QR_ADD_LOGO"] = os.getenv("QR_ADD_LOGO")
+    env["QR_ADD_TITLE"] = os.getenv("QR_ADD_TITLE")
 
     env["QR_CODE_VALUE_LEN"] = os.getenv("QR_CODE_VALUE_LEN")
     env["LOGIN_DEFAULT_LEN"] = os.getenv("LOGIN_DEFAULT_LEN")
@@ -139,9 +144,6 @@ def load_environment_variables() -> None:
     env["SECRET_SALT"] = os.getenv("SECRET_SALT")
 
     env["BACKEND_ADDRESS"] = os.getenv("BACKEND_ADDRESS")
-
-    env["SENDGRID_MAIL"] = os.getenv("SENDGRID_MAIL")
-    env["SENDGRID_KEY"] = os.getenv("SENDGRID_KEY")
 #===========================================================
 
 """ DATABASE RELATED ACTIONS """
@@ -261,64 +263,62 @@ def generate_qr_code_value(db: Session = Depends(get_db_members)) -> str:
         if not exists:
             return code_value
         
-def generate_qr_code(code: str, name: str = "", surname: str = "",
-                     fill_color: str = "black", back_color: str = "white") -> Path:
+def generate_qr_code(code: str,
+                     fill_color: str = "black",
+                     back_color: str = "white") -> Path:
     """ Generates QR code image based on provided data
     """
+    # Parameters
+    box_size: int = 12
+    border: int = 2
+    logo_scale: float = 0.22
+    add_label: bool = False
+    label_text: str = "IMPACT"
+    logo_path = r"assets/logo.jpg"
     
-    def place_text(text: str, height: bool) -> None:
-        bbox = draw.textbbox((0,0), text, font=font)
-        text_w = bbox[2] - bbox[0]
-        
-        draw.text(((img_w - text_w) // 2, height), text, fill="black", font=font)
-        return
-    
-    """ Generating original QR Code """
-    # Set up qr code and add data on it
-    qr = qrcode.QRCode(version=3, box_size=10, border=2,
-                       error_correction=qrcode.constants.ERROR_CORRECT_H)
+    qr = qrcode.QRCode(
+        version=3,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=box_size,
+        border=border,
+    )
     qr.add_data(code)
-    qr.make(fit=True)   # Does it needed?
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
 
-    # Generate image from the qr code
-    img = qr.make_image(fill_color=fill_color, back_color=back_color)
+    # 2) Centered logo with white padding ring
+    logo = Image.open(logo_path).convert("RGBA")
+    qr_w, qr_h = qr_img.size
+    target_logo_w = int(qr_w * logo_scale)
+    ratio = target_logo_w / logo.width
+    logo = logo.resize((target_logo_w, int(logo.height * ratio)), Image.LANCZOS)
 
-    # Load logo and resize it, so it will fit inside the qr code. 
-    logo = PIL.Image.open("impakt_logo.jpg")
-    logo = logo.resize((75, 100))
+    pad = int(target_logo_w * 0.18)
+    bg_w, bg_h = logo.width + pad*2, logo.height + pad*2
+    bg = Image.new("RGBA", (bg_w, bg_h), (255, 255, 255, 255))
+    mask = Image.new("L", (bg_w, bg_h), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle((0, 0, bg_w, bg_h), radius=int(min(bg_w,bg_h)*0.12), fill=255)
+    padded = Image.new("RGBA", (bg_w, bg_h))
+    padded.paste(bg, (0, 0), mask)
+    padded.paste(logo, (pad, pad), logo)
 
-    # Calculate coordinates --> place logo in center of QR code
-    img_w, img_h = img.size
-    logo_w, logo_h = logo.size
-    pos = ((img_w - logo_w) // 2, (img_h - logo_h) // 2)
+    x = (qr_w - padded.width)//2
+    y = (qr_h - padded.height)//2
+    qr_img.paste(padded, (x, y), padded)
 
-    img.paste(logo, pos)
-
-    """ Making an image from original QR Code"""
-    # Choose font size for the text
-    font_size = 20
-    font = PIL.ImageFont.load_default(size=font_size)
-
-    # Calculate --> add blank space to the original QR Code image
-    padding = font_size * 3 + 10
-    new_img = PIL.Image.new("RGB", (img_w, img_h + padding), "white")
-    draw = PIL.ImageDraw.Draw(new_img)
-
-    # Place name and surname on top
-    place_text(name, 5)
-    place_text(surname, 5 + font_size)
-
-    # Place original QR Code
-    img = img.convert("RGB")
-    new_img.paste(img, (0, 5 + font_size * 2))
-
-    # Place QR Code as text at the very bottom
-    place_text(code, 5 + img_h + font_size * 2)
+    # 3) Add thick black border frame
+    frame_thickness = int(qr_w * 0.04)
+    framed_size = qr_w + 2 * frame_thickness
+    framed = Image.new("RGB", (framed_size, framed_size), "black")
+    framed.paste(qr_img, (frame_thickness, frame_thickness))
+    qr_img = framed
+    qr_w, qr_h = qr_img.size
 
     # Save QR code on the disc --> return Path to it
-    qr_name = "qr_{name}_{surname}_{code}.png".format(name=name, surname=surname, code=code)
+    qr_name = "{code}.png".format(code=code)
     qr_path = Path(Path.resolve(Path.cwd()), "qr_codes", qr_name)
-    new_img.save(qr_path)
+    qr_img.save(qr_path)
     return qr_path
 
 def generate_qr_code_member(member: Member) -> Path:
@@ -331,8 +331,9 @@ def generate_qr_code_member(member: Member) -> Path:
         case AccountType.INSTRUCTOR:
             fill_color = "green"
 
-    return generate_qr_code(member.card_id, member.name, member.surname,
+    return generate_qr_code(member.card_id,
                             fill_color=fill_color, back_color=back_color)
+
 
 """ EMAIL
     [SMTP, SendGrid] 
@@ -344,7 +345,7 @@ def send_welcome_email(email_to: str,
 
     # Get needed data from environmental vars
     email_from = env["ROOT_EMAIL"]
-    email_pass = env("ROOT_EMAIL_APP_PASS")
+    email_pass = env("EMAIL_APP_PASS")
 
     # Ensure email template is not null
     if not template:
@@ -423,13 +424,16 @@ def send_confirmation_email(to_email: str, key: str):
     smtp_port = 465
     with smtplib.SMTP("smtp.gmail.com", smtp_port, timeout=10) as smtp:
         smtp.starttls()  # Often required, depending on provider
-        smtp.login(env["ROOT_EMAIL"], env["ROOT_EMAIL_APP_PASS"])
+        smtp.login(env["ROOT_EMAIL"], env["EMAIL_APP_PASS"])
         smtp.send_message(msg)
 
 def SendGrid_send_welcome_email(email_to: str, 
                                 name: str, surname: str,
                                 login: str, password: str,
                                 qr_path: Path, template: Path = None) -> None:
+
+    if env["SEND_WELCOME_EMAIL"] != "Sendgrid":
+        return
 
     # Ensure email template is not null
     if not template:
@@ -500,6 +504,9 @@ def SendGrid_send_welcome_email_member(member: Member,
                                 qr_path, template)
 
 def SendGrid_send_confirmation_mail(to_email, key: str):
+    if env["SEND_WELCOME_EMAIL"] != "Sendgrid":
+        return
+
     url = env["BACKEND_ADDRESS"]
     confirm_url = f"{url}/confirm/{key}"
     content = f"""

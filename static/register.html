@@ -9,12 +9,13 @@
 <body>
   <header class="header">
     <div class="brand" style="display:flex;align-items:center;gap:10px;">
-      <a href="index.html"><img class="logo" src="assets/logo_1.jpg" alt="Logo Impact Dance School"></a>
+      <img class="logo" src="assets/logo_1.jpg" alt="Impact Dance School logo">
       <div>
         <h1>Impact Dance School</h1>
         <small>Polska, Częstochowa</small>
       </div>
     </div>
+
     <nav class="nav">
       <a href="index.html">Strona główna</a>
       <a class="primary" href="login.html">Zaloguj się</a>
@@ -24,24 +25,50 @@
   <main class="container">
     <div class="card">
       <h2 style="margin:0 0 10px 0;color:var(--black)">Utwórz konto</h2>
-      <form onsubmit="event.preventDefault(); validateMatch();">
+
+      <!-- Notification banner -->
+      <!-- <div id="form-notice" class="form-notice hidden" role="alert" aria-live="polite"></div> -->
+
+      <form id="register-form">
         <div>
-          <label for="name">Imię i nazwisko</label>
-          <input id="name" type="text" placeholder="Jan Kowalski" required>
+          <label for="name">Imię</label>
+          <input id="name" type="text" placeholder="Jan" required>
         </div>
+
+        <div>
+          <label for="surname">Nazwisko</label>
+          <input id="surname" type="text" placeholder="Kowalski" required>
+        </div>
+
         <div>
           <label for="email">Adres e-mail</label>
           <input id="email" type="email" placeholder="adres@example.com" required>
         </div>
+
+        <div>
+          <label for="username">Username</label>
+          <input type="text" id="username" placeholder="Nazwa uzytkownika, która będzie używana przy logowaniu." required />
+        </div>
+
         <div>
           <label for="password">Hasło</label>
           <input id="password" type="password" placeholder="Co najmniej 6 znaków" required minlength="6">
         </div>
+
         <div>
-          <label for="confirm">Powtórz hasło</label>
-          <input id="confirm" type="password" placeholder="Wpisz ponownie hasło" required minlength="6">
+          <label for="confirmPassword">Powtórz hasło</label>
+          <input id="confirmPassword" type="password" placeholder="Wpisz ponownie hasło" required minlength="6">
         </div>
-        <button type="submit">Zarejestruj się</button>
+
+        <div class="terms">
+          <input id="terms" type="checkbox" required>
+          <label for="terms">
+            Akceptuję <a class="link" href="/static/terms_and_agreement.html" target="_blank">Regulamin</a>
+          </label>
+        </div>
+
+        <button id="submit-btn" type="submit">Zarejestruj się</button>
+
         <p class="helper">Masz już konto? <a class="link" href="login.html">Zaloguj się</a>.</p>
       </form>
     </div>
@@ -51,17 +78,8 @@
     © <span id="year"></span> Impact Dance School
   </footer>
 
+  <script src="register.js" defer></script>
   <script>
-    // Check password match
-    function validateMatch(){
-      const pass1 = document.getElementById('password').value;
-      const pass2 = document.getElementById('confirm').value;
-      if(pass1 !== pass2){
-        alert('Hasła nie są takie same.');
-      } else {
-        alert('To tylko wersja demonstracyjna – podłącz backend, aby zapisać dane.');
-      }
-    }
     document.getElementById('year').textContent = new Date().getFullYear();
   </script>
 </body>
